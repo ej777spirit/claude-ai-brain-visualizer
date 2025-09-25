@@ -62,6 +62,7 @@ export interface APIResponse {
     processingTime: number;
     tokensUsed: number;
     modelVersion: string;
+    isSimulated?: boolean;
   };
 }
 

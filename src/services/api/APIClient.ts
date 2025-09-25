@@ -82,12 +82,13 @@ export class APIClient implements IAPIClient {
     return {
       response,
       thoughts,
-      model: model.toUpperCase(),
+      model: `${model.toUpperCase()} (DEMO)`,
       confidence: Math.floor(Math.random() * 20) + 80,
       metadata: {
         processingTime: 1500 + Math.random() * 1000,
         tokensUsed: Math.floor(Math.random() * 1000) + 500,
-        modelVersion: 'simulated'
+        modelVersion: 'simulated-demo',
+        isSimulated: true
       }
     };
   }
@@ -126,9 +127,9 @@ export class APIClient implements IAPIClient {
    */
   private generateContextualResponse(prompt: string, model: AIModel): string {
     const responses = {
-      claude: `As Claude, I've analyzed your query "${prompt}" through multiple cognitive pathways. The visualization shows my thought process involving contextual understanding, pattern recognition, and logical synthesis. Each node represents a concept or reasoning step, with connections showing how ideas relate and build upon each other.`,
-      gemini: `Through Gemini's advanced processing, I've examined "${prompt}" using parallel analysis streams. The 3D visualization demonstrates how I connect different knowledge domains, evaluate multiple perspectives, and synthesize information into a coherent response.`,
-      gpt: `GPT-4's analysis of "${prompt}" involves deep transformer-based reasoning. The thought graph illustrates how attention mechanisms focus on relevant concepts, building layers of understanding that culminate in this comprehensive response.`
+      claude: `⚠️ <strong>DEMO MODE - SIMULATED RESPONSE</strong><br><br>As Claude, I've analyzed your query "${prompt}" through multiple cognitive pathways. The visualization shows my thought process involving contextual understanding, pattern recognition, and logical synthesis. Each node represents a concept or reasoning step, with connections showing how ideas relate and build upon each other.<br><br><em>This is a simulated response for demonstration purposes. Configure API keys to get real AI responses.</em>`,
+      gemini: `⚠️ <strong>DEMO MODE - SIMULATED RESPONSE</strong><br><br>Through Gemini's advanced processing, I've examined "${prompt}" using parallel analysis streams. The 3D visualization demonstrates how I connect different knowledge domains, evaluate multiple perspectives, and synthesize information into a coherent response.<br><br><em>This is a simulated response for demonstration purposes. Configure API keys to get real AI responses.</em>`,
+      gpt: `⚠️ <strong>DEMO MODE - SIMULATED RESPONSE</strong><br><br>GPT-4's analysis of "${prompt}" involves deep transformer-based reasoning. The thought graph illustrates how attention mechanisms focus on relevant concepts, building layers of understanding that culminate in this comprehensive response.<br><br><em>This is a simulated response for demonstration purposes. Configure API keys to get real AI responses.</em>`
     };
     return responses[model] || responses.claude;
   }

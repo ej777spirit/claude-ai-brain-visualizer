@@ -347,9 +347,14 @@ export class UIController implements IUIController {
   private updateResponseDisplay(response: any): void {
     const elements = this.getElements();
     const content = elements.responseContent;
+
+    const isSimulated = response.metadata?.isSimulated;
+    const modelDisplay = isSimulated ? `${response.model} (Demo Mode)` : response.model;
+    const confidenceDisplay = isSimulated ? `${response.confidence}% (simulated)` : `${response.confidence}% confidence`;
+
     content.innerHTML = `
       <div style="margin-bottom: 10px; color: var(--primary-accent); font-weight: 600;">
-        ${response.model} Analysis (${response.confidence}% confidence)
+        ${modelDisplay} Analysis (${confidenceDisplay})
       </div>
       <div>${response.response}</div>
     `;
@@ -484,6 +489,21 @@ export class UIController implements IUIController {
    * Initialize accessibility features
    */
   private initializeAccessibility(): void {
+    // Set ARIA labels for better accessibility
+    const canvas = document.getElementById('brain-canvas');
+    const userInput = document.getElementById('userInput');
+    const sendButton = document.getElementById('sendButton');
+
+    if (canvas) {
+      canvas.setAttribute('aria-label', '3D thought visualization');
+    }
+    if (userInput) {
+      userInput.setAttribute('aria-label', 'Enter your question');
+    }
+    if (sendButton) {
+      sendButton.setAttribute('aria-label', 'Send question');
+    }
+
     // Skip links are already in HTML
     // Screen reader announcements are handled via announceToScreenReader
   }

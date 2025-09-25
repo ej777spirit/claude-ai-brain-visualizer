@@ -44,6 +44,8 @@ export class StateManager implements IStateManager {
    */
   subscribe(listener: (state: AppState) => void): () => void {
     this.listeners.add(listener);
+    // Call listener immediately with current state
+    listener(this.getState());
     return () => this.listeners.delete(listener);
   }
 
@@ -101,7 +103,10 @@ export class StateManager implements IStateManager {
         const sourceValue = source[key];
         const targetValue = target[key];
 
-        if (this.isObject(sourceValue) && this.isObject(targetValue)) {
+        // Handle Maps and Sets directly (don't try to merge them)
+        if (sourceValue instanceof Map || sourceValue instanceof Set) {
+          result[key] = sourceValue as T[Extract<keyof T, string>];
+        } else if (this.isObject(sourceValue) && this.isObject(targetValue)) {
           result[key] = this.deepMerge(targetValue, sourceValue);
         } else if (sourceValue !== undefined) {
           result[key] = sourceValue as T[Extract<keyof T, string>];
