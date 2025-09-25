@@ -12,7 +12,9 @@ A sophisticated 3D visualization tool for exploring AI thought processes with re
 - **Accessibility**: WCAG compliant with screen reader support
 - **State Management**: Centralized state with observer pattern
 - **Memory Safe**: Proper disposal of Three.js objects
-- **Test Coverage**: Comprehensive unit and integration tests
+- **Test Coverage**: Comprehensive unit and integration tests (47 tests passing)
+- **Demo Mode**: Clear indicators for simulated vs real AI responses
+- **Graceful Fallbacks**: Works without API keys using intelligent simulation
 
 ## 🏗️ Architecture
 
@@ -75,7 +77,12 @@ The application uses a secure proxy server to handle API calls. **Never expose A
 - **OpenAI GPT**: Set `OPENAI_API_KEY` in `.env`
 - **Google Gemini**: Set `GOOGLE_API_KEY` in `.env`
 
-If no API keys are provided, the application will use simulated responses for demonstration.
+### Demo Mode
+If no API keys are provided, the application will use **simulated responses** for demonstration with:
+- ⚠️ Clear "DEMO MODE" indicators in responses
+- Realistic AI thought process visualization
+- Full functionality without external API costs
+- Easy upgrade path by adding API keys
 
 ## 🛠️ Development
 
@@ -104,6 +111,25 @@ npm run test:coverage    # Run tests with coverage
 # Utilities
 npm run clean            # Clean build artifacts
 ```
+
+### Testing Infrastructure
+
+The project includes comprehensive testing with **47 passing tests**:
+
+- **Unit Tests**: Core business logic (APIClient, StateManager)
+- **Integration Tests**: UI interactions and API endpoints
+- **Mocking**: Three.js, Axios, and DOM environment mocking
+- **Coverage**: Configured for detailed reporting
+
+Tests run automatically and ensure production readiness.
+
+### Demo Mode
+
+When API keys are not configured, the application runs in **Demo Mode** with:
+- Simulated AI responses with realistic thought processes
+- Clear visual indicators ("DEMO MODE" banners)
+- Full functionality for exploration and testing
+- Easy transition to real APIs by adding keys
 
 ### Project Structure Details
 
