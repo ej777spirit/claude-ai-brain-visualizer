@@ -1,82 +1,165 @@
 # AI Brain Visualizer Pro - Claude Integration
 
-An advanced 3D visualization tool that demonstrates AI thought processes in real-time using Three.js. This interactive web application simulates how different AI models (Claude, Gemini, GPT-4) process and connect concepts through an immersive brain-like visualization.
+A sophisticated 3D visualization tool for exploring AI thought processes with real-time analysis and scientific research capabilities.
 
-## Features
+## 🚀 Features
 
-- **Real-time 3D Visualization**: Interactive Three.js scene showing AI thought processes as connected nodes
-- **Multi-Model Support**: Switch between Claude, Gemini, and GPT-4 simulation modes
-- **Thought Categories**: Visual distinction between Analysis, Synthesis, Recall, and Evaluation nodes
-- **Performance Monitoring**: Real-time FPS, node count, and memory usage tracking
-- **Chat Interface**: Interactive conversation with simulated AI responses
-- **Data Export**: Save and export visualization data as JSON
-- **Responsive Design**: Works on desktop and mobile devices
-- **Accessibility**: Screen reader support and keyboard navigation
+- **3D Thought Visualization**: Interactive Three.js-based neural network visualization
+- **Multi-AI Support**: Integration with OpenAI, Anthropic Claude, Google Gemini, and more
+- **Secure Architecture**: API proxy server to protect credentials
+- **Scientific Analysis**: Mathematical representations, matrices, and research metrics
+- **TypeScript**: Fully typed for better maintainability
+- **Accessibility**: WCAG compliant with screen reader support
+- **State Management**: Centralized state with observer pattern
+- **Memory Safe**: Proper disposal of Three.js objects
+- **Test Coverage**: Comprehensive unit and integration tests
 
-## Technologies Used
-
-- **Three.js**: 3D graphics and visualization
-- **OrbitControls**: Camera controls for 3D navigation
-- **Math.js**: Mathematical computations
-- **Vanilla JavaScript**: ES6+ classes and modern JavaScript features
-- **CSS Variables**: Dynamic theming and responsive design
-
-## Project Structure
+## 🏗️ Architecture
 
 ```
 claude-ai-brain-visualizer/
-├── index.html          # Main HTML structure
-├── styles.css          # CSS styling and responsive design
-├── script.js           # Application logic and Three.js visualization
-└── README.md           # Project documentation
+├── src/                    # Source TypeScript files
+│   ├── types/             # Type definitions
+│   ├── services/          # Core services (API, State, Storage)
+│   ├── visualization/     # Three.js visualization components
+│   ├── ui/               # UI controllers and components
+│   └── utils/            # Utility functions
+├── server/                # Backend API proxy
+├── tests/                 # Test files
+├── public/               # Static assets
+└── dist/                 # Compiled output
 ```
 
-## Getting Started
+## 🔧 Installation & Setup
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/ej777spirit/claude-ai-brain-visualizer.git
-   cd claude-ai-brain-visualizer
-   ```
+### Prerequisites
+- Node.js 18+
+- npm or yarn
 
-2. Open `index.html` in your web browser or serve it with a local server.
+### Quick Start
 
-3. Start exploring AI thought processes by entering questions in the chat interface!
+1. **Clone the repository:**
+```bash
+git clone https://github.com/ej777spirit/claude-ai-brain-visualizer.git
+cd claude-ai-brain-visualizer
+```
 
-## Usage
+2. **Install dependencies:**
+```bash
+npm install
+```
 
-1. **Select AI Model**: Choose between Claude, Gemini, or GPT-4 from the model selector
-2. **Ask Questions**: Type your question in the input field and press Enter or click "Analyze"
-3. **Explore Visualization**: Use mouse to orbit, zoom, and pan around the 3D brain visualization
-4. **View Analysis**: Check the right panel for detailed AI response and statistics
-5. **Save/Load Sessions**: Use the control buttons to persist your visualization sessions
+3. **Set up environment variables:**
+```bash
+cp .env.example .env
+# Edit .env with your API keys (optional - works with simulated responses)
+```
 
-## Architecture
+4. **Start development servers:**
+```bash
+npm run dev
+```
 
-The application uses a modular architecture with three main components:
+This will start:
+- Frontend dev server on `http://localhost:3000`
+- Backend API proxy on `http://localhost:3001`
 
-- **StateManager**: Centralized state management with history and undo support
-- **VisualizationManager**: Three.js scene management and 3D rendering
-- **ApplicationController**: Main application logic and event handling
-- **AIAPISimulator**: Simulated AI responses (would be replaced with real API calls in production)
+5. **Open your browser** and navigate to `http://localhost:3000`
 
-## Browser Support
+## 🔐 API Configuration
 
-- Chrome 80+
-- Firefox 75+
-- Safari 13+
-- Edge 80+
+The application uses a secure proxy server to handle API calls. **Never expose API keys in the frontend.**
 
-Requires WebGL support for 3D visualization.
+### Supported APIs
+- **Anthropic Claude**: Set `ANTHROPIC_API_KEY` in `.env`
+- **OpenAI GPT**: Set `OPENAI_API_KEY` in `.env`
+- **Google Gemini**: Set `GOOGLE_API_KEY` in `.env`
 
-## Contributing
+If no API keys are provided, the application will use simulated responses for demonstration.
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+## 🛠️ Development
 
-## License
+### Available Scripts
 
-This project is open source and available under the [MIT License](LICENSE).
+```bash
+# Development
+npm run dev              # Start both frontend and backend servers
+npm run dev:client       # Start only frontend dev server
+npm run dev:server       # Start only backend API server
 
-## Demo
+# Building
+npm run build            # Build for production
+npm run preview          # Preview production build
 
-The application runs entirely in the browser with no server-side dependencies. It's a pure client-side application that simulates AI responses for demonstration purposes.
+# Code Quality
+npm run type-check       # Run TypeScript type checking
+npm run lint             # Run ESLint
+npm run lint:fix         # Fix ESLint issues
+
+# Testing
+npm run test             # Run tests
+npm run test:watch       # Run tests in watch mode
+npm run test:coverage    # Run tests with coverage
+
+# Utilities
+npm run clean            # Clean build artifacts
+```
+
+### Project Structure Details
+
+- **`src/types/`**: TypeScript interfaces and type definitions
+- **`src/services/`**: Core business logic (API client, state management)
+- **`src/visualization/`**: Three.js 3D rendering and visualization
+- **`src/ui/`**: User interface controllers and DOM manipulation
+- **`src/utils/`**: Utility functions and accessibility helpers
+- **`server/`**: Express.js API proxy server
+- **`tests/`**: Unit and integration tests
+
+## 🚀 Deployment
+
+### Production Build
+
+```bash
+npm run build
+```
+
+This creates optimized files in the `dist/` directory.
+
+### Deploy to Web Server
+
+1. Build the project: `npm run build`
+2. Copy the `dist/` folder to your web server
+3. Configure your server to serve `index.html` for all routes (SPA routing)
+
+### Environment Variables for Production
+
+```env
+NODE_ENV=production
+PORT=3001
+CLIENT_URL=https://yourdomain.com
+ANTHROPIC_API_KEY=your_production_key
+# ... other API keys
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Commit your changes: `git commit -m 'Add amazing feature'`
+4. Push to the branch: `git push origin feature/amazing-feature`
+5. Open a Pull Request
+
+## 📝 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Built with [Three.js](https://threejs.org/) for 3D visualization
+- Powered by [Vite](https://vitejs.dev/) for fast development
+- TypeScript for type safety
+- Express.js for the API proxy server
+
+---
+
+**Created with integration for Anthropic's Claude AI** 🤖✨
