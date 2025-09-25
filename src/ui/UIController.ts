@@ -13,48 +13,41 @@ export class UIController implements IUIController {
   private apiClient: APIClient;
   private visualizationManager: VisualizationManager;
 
-  // DOM elements
-  private elements = {
+  // DOM elements - will be initialized after DOM is ready
+  private elements: {
     // Model selection
-    modelButtons: document.querySelectorAll('.model-btn') as NodeListOf<HTMLButtonElement>,
-
+    modelButtons: NodeListOf<HTMLButtonElement>;
     // Chat interface
-    chatContainer: document.getElementById('chatContainer') as HTMLDivElement,
-    userInput: document.getElementById('userInput') as HTMLInputElement,
-    sendButton: document.getElementById('sendButton') as HTMLButtonElement,
-
+    chatContainer: HTMLDivElement;
+    userInput: HTMLInputElement;
+    sendButton: HTMLButtonElement;
     // Control buttons
-    saveBtn: document.getElementById('saveBtn') as HTMLButtonElement,
-    loadBtn: document.getElementById('loadBtn') as HTMLButtonElement,
-    exportBtn: document.getElementById('exportBtn') as HTMLButtonElement,
-    resetBtn: document.getElementById('resetBtn') as HTMLButtonElement,
-
+    saveBtn: HTMLButtonElement;
+    loadBtn: HTMLButtonElement;
+    exportBtn: HTMLButtonElement;
+    resetBtn: HTMLButtonElement;
     // Response display
-    responseContent: document.getElementById('responseContent') as HTMLDivElement,
-
+    responseContent: HTMLDivElement;
     // Stats display
-    totalNodes: document.getElementById('totalNodes') as HTMLSpanElement,
-    avgWeight: document.getElementById('avgWeight') as HTMLSpanElement,
-    maxDepth: document.getElementById('maxDepth') as HTMLSpanElement,
-    activeNodes: document.getElementById('activeNodes') as HTMLSpanElement,
-    categoryBreakdown: document.getElementById('categoryBreakdown') as HTMLSpanElement,
-
+    totalNodes: HTMLSpanElement;
+    avgWeight: HTMLSpanElement;
+    maxDepth: HTMLSpanElement;
+    activeNodes: HTMLSpanElement;
+    categoryBreakdown: HTMLSpanElement;
     // Status indicators
-    statusDot: document.getElementById('statusDot') as HTMLDivElement,
-    statusText: document.getElementById('statusText') as HTMLSpanElement,
-    apiStatusDot: document.getElementById('apiStatusDot') as HTMLDivElement,
-
+    statusDot: HTMLDivElement;
+    statusText: HTMLSpanElement;
+    apiStatusDot: HTMLDivElement;
+    apiStatusText: HTMLSpanElement;
     // Performance stats
-    fps: document.getElementById('fps') as HTMLSpanElement,
-    nodeCount: document.getElementById('nodeCount') as HTMLSpanElement,
-    memUsage: document.getElementById('memUsage') as HTMLSpanElement,
-
+    fps: HTMLSpanElement;
+    nodeCount: HTMLSpanElement;
+    memUsage: HTMLSpanElement;
     // Loading overlay
-    loadingOverlay: document.getElementById('loadingOverlay') as HTMLDivElement,
-
+    loadingOverlay: HTMLDivElement;
     // Screen reader announcer
-    srAnnouncer: document.getElementById('sr-announcer') as HTMLDivElement
-  };
+    srAnnouncer: HTMLDivElement;
+  } | null = null;
 
   private performanceMonitor: {
     frameCount: number;
@@ -77,9 +70,60 @@ export class UIController implements IUIController {
   }
 
   /**
+   * Initialize DOM elements after DOM is ready
+   */
+  private initializeDOMElements(): void {
+    this.elements = {
+      // Model selection
+      modelButtons: document.querySelectorAll('.model-btn') as NodeListOf<HTMLButtonElement>,
+      // Chat interface
+      chatContainer: document.getElementById('chatContainer') as HTMLDivElement,
+      userInput: document.getElementById('userInput') as HTMLInputElement,
+      sendButton: document.getElementById('sendButton') as HTMLButtonElement,
+      // Control buttons
+      saveBtn: document.getElementById('saveBtn') as HTMLButtonElement,
+      loadBtn: document.getElementById('loadBtn') as HTMLButtonElement,
+      exportBtn: document.getElementById('exportBtn') as HTMLButtonElement,
+      resetBtn: document.getElementById('resetBtn') as HTMLButtonElement,
+      // Response display
+      responseContent: document.getElementById('responseContent') as HTMLDivElement,
+      // Stats display
+      totalNodes: document.getElementById('totalNodes') as HTMLSpanElement,
+      avgWeight: document.getElementById('avgWeight') as HTMLSpanElement,
+      maxDepth: document.getElementById('maxDepth') as HTMLSpanElement,
+      activeNodes: document.getElementById('activeNodes') as HTMLSpanElement,
+      categoryBreakdown: document.getElementById('categoryBreakdown') as HTMLSpanElement,
+      // Status indicators
+      statusDot: document.getElementById('statusDot') as HTMLDivElement,
+      statusText: document.getElementById('statusText') as HTMLSpanElement,
+      apiStatusDot: document.getElementById('apiStatusDot') as HTMLDivElement,
+      apiStatusText: document.getElementById('apiStatusText') as HTMLSpanElement,
+      // Performance stats
+      fps: document.getElementById('fps') as HTMLSpanElement,
+      nodeCount: document.getElementById('nodeCount') as HTMLSpanElement,
+      memUsage: document.getElementById('memUsage') as HTMLSpanElement,
+      // Loading overlay
+      loadingOverlay: document.getElementById('loadingOverlay') as HTMLDivElement,
+      // Screen reader announcer
+      srAnnouncer: document.getElementById('sr-announcer') as HTMLDivElement
+    };
+  }
+
+  /**
+   * Safely access DOM elements
+   */
+  private getElements(): NonNullable<typeof this.elements> {
+    if (!this.elements) {
+      throw new Error('DOM elements not initialized. Call initialize() first.');
+    }
+    return this.elements;
+  }
+
+  /**
    * Initialize the UI controller
    */
   initialize(): void {
+    this.initializeDOMElements();
     this.setupEventListeners();
     this.setupStateSubscriptions();
     this.startPerformanceMonitoring();
@@ -93,26 +137,30 @@ export class UIController implements IUIController {
     console.log('UI Controller initialized');
   }
 
-  /**
+    /**
    * Setup DOM event listeners
    */
   private setupEventListeners(): void {
+    const elements = this.getElements();
+
     // Model selection
-    this.elements.modelButtons.forEach(btn => {
+    elements.modelButtons.forEach(btn => {
       btn.addEventListener('click', () => this.handleModelChange(btn));
     });
 
-    // Input handling
-    this.elements.sendButton.addEventListener('click', () => this.handleSendMessage());
-    this.elements.userInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') this.handleSendMessage();
+    // Chat interface
+    elements.sendButton.addEventListener('click', () => this.handleSendMessage());
+    elements.userInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        this.handleSendMessage();
+      }
     });
 
     // Control buttons
-    this.elements.resetBtn.addEventListener('click', () => this.handleReset());
-    this.elements.saveBtn.addEventListener('click', () => this.handleSave());
-    this.elements.loadBtn.addEventListener('click', () => this.handleLoad());
-    this.elements.exportBtn.addEventListener('click', () => this.handleExport());
+    elements.resetBtn.addEventListener('click', () => this.handleReset());
+    elements.saveBtn.addEventListener('click', () => this.handleSave());
+    elements.loadBtn.addEventListener('click', () => this.handleLoad());
+    elements.exportBtn.addEventListener('click', () => this.handleExport());
   }
 
   /**
@@ -128,11 +176,12 @@ export class UIController implements IUIController {
    * Handle model selection change
    */
   private handleModelChange(button: HTMLButtonElement): void {
+    const elements = this.getElements();
     const model = button.dataset.model as AIModel;
     if (!model) return;
 
     // Update UI
-    this.elements.modelButtons.forEach(btn => btn.classList.remove('active'));
+    elements.modelButtons.forEach(btn => btn.classList.remove('active'));
     button.classList.add('active');
 
     // Update state
@@ -146,14 +195,15 @@ export class UIController implements IUIController {
    * Handle sending a message
    */
   private async handleSendMessage(): Promise<void> {
-    const input = this.elements.userInput;
+    const elements = this.getElements();
+    const input = elements.userInput;
     const message = input.value.trim();
 
     if (!message || this.stateManager.getState().isThinking) return;
 
     // Clear input and disable send button
     input.value = '';
-    this.elements.sendButton.disabled = true;
+    elements.sendButton.disabled = true;
 
     // Add user message
     this.addMessage(message, 'user');
@@ -176,31 +226,31 @@ export class UIController implements IUIController {
       this.stateManager.dispatch({ type: 'THINKING_FINISHED', payload: response });
 
       // Enable controls
-      this.elements.saveBtn.disabled = false;
-      this.elements.exportBtn.disabled = false;
+      elements.saveBtn.disabled = false;
+      elements.exportBtn.disabled = false;
 
     } catch (error) {
       console.error('Error processing message:', error);
       this.addMessage('Error processing request. Please try again.', 'system');
     } finally {
       this.stateManager.setState({ isThinking: false });
-      this.elements.sendButton.disabled = false;
+      elements.sendButton.disabled = false;
     }
   }
 
-  /**
+    /**
    * Handle reset button
    */
   private handleReset(): void {
+    const elements = this.getElements();
+
     this.visualizationManager.clearScene();
     this.resetResponseDisplay();
     this.updateStats([]);
     this.stateManager.reset();
 
-    this.elements.saveBtn.disabled = true;
-    this.elements.exportBtn.disabled = true;
-
-    this.addMessage('Visualization reset', 'system');
+    elements.saveBtn.disabled = true;
+    elements.exportBtn.disabled = true;
   }
 
   /**
@@ -279,7 +329,8 @@ export class UIController implements IUIController {
    * Add message to chat
    */
   private addMessage(text: string, type: 'user' | 'ai' | 'system'): void {
-    const container = this.elements.chatContainer;
+    const elements = this.getElements();
+    const container = elements.chatContainer;
     const message = document.createElement('div');
     message.className = `message ${type}-message`;
     message.textContent = text;
@@ -294,7 +345,8 @@ export class UIController implements IUIController {
    * Update response display
    */
   private updateResponseDisplay(response: any): void {
-    const content = this.elements.responseContent;
+    const elements = this.getElements();
+    const content = elements.responseContent;
     content.innerHTML = `
       <div style="margin-bottom: 10px; color: var(--primary-accent); font-weight: 600;">
         ${response.model} Analysis (${response.confidence}% confidence)
@@ -307,7 +359,8 @@ export class UIController implements IUIController {
    * Reset response display
    */
   private resetResponseDisplay(): void {
-    this.elements.responseContent.innerHTML = `
+    const elements = this.getElements();
+    elements.responseContent.innerHTML = `
       <p class="response-placeholder">
         Enter a question to see the AI's thought process visualized in 3D.
         The visualization shows how AI models process and connect concepts.
@@ -319,14 +372,16 @@ export class UIController implements IUIController {
    * Update statistics display
    */
   updateStats(thoughts: any[]): void {
-    this.elements.totalNodes.textContent = thoughts.length.toString();
-    this.elements.activeNodes.textContent = thoughts.length.toString();
+    const elements = this.getElements();
+
+    elements.totalNodes.textContent = thoughts.length.toString();
+    elements.activeNodes.textContent = thoughts.length.toString();
 
     if (thoughts.length > 0) {
       const avgWeight = Math.round(thoughts.reduce((sum: number, t: any) => sum + t.weight, 0) / thoughts.length);
-      this.elements.avgWeight.textContent = `${avgWeight}%`;
+      elements.avgWeight.textContent = `${avgWeight}%`;
     } else {
-      this.elements.avgWeight.textContent = '0%';
+      elements.avgWeight.textContent = '0%';
     }
 
     // Calculate max depth
@@ -341,7 +396,7 @@ export class UIController implements IUIController {
       }
       maxDepth = Math.max(maxDepth, depth);
     });
-    this.elements.maxDepth.textContent = maxDepth.toString();
+    elements.maxDepth.textContent = maxDepth.toString();
 
     // Category breakdown
     const categories: Record<string, number> = {};
@@ -352,15 +407,17 @@ export class UIController implements IUIController {
     const breakdown = Object.entries(categories)
       .map(([cat, count]) => `${cat}: ${count}`)
       .join(' • ');
-    this.elements.categoryBreakdown.textContent = breakdown || 'No thoughts';
+    elements.categoryBreakdown.textContent = breakdown || 'No thoughts';
   }
 
   /**
    * Update status indicator
    */
   updateStatus(text: string, status: 'ready' | 'thinking' | 'error'): void {
-    this.elements.statusText.textContent = text;
-    const dot = this.elements.statusDot;
+    const elements = this.getElements();
+
+    elements.statusText.textContent = text;
+    const dot = elements.statusDot;
     dot.className = `status-dot ${status}`;
   }
 
@@ -368,10 +425,12 @@ export class UIController implements IUIController {
    * Show/hide loading overlay
    */
   showLoading(show: boolean): void {
+    const elements = this.getElements();
+
     if (show) {
-      this.elements.loadingOverlay.classList.add('active');
+      elements.loadingOverlay.classList.add('active');
     } else {
-      this.elements.loadingOverlay.classList.remove('active');
+      elements.loadingOverlay.classList.remove('active');
     }
   }
 
@@ -379,23 +438,27 @@ export class UIController implements IUIController {
    * Update UI based on state changes
    */
   private updateUIFromState(state: AppState): void {
+    const elements = this.getElements();
+
     // Update thinking status
     if (state.isThinking) {
       this.updateStatus('AI is thinking...', 'thinking');
-      this.elements.sendButton.disabled = true;
+      elements.sendButton.disabled = true;
     } else {
       this.updateStatus('Ready to analyze', 'ready');
-      this.elements.sendButton.disabled = false;
+      elements.sendButton.disabled = false;
     }
 
     // Update performance stats
-    this.elements.nodeCount.textContent = state.knowledgeGraph.nodes.length.toString();
+    elements.nodeCount.textContent = state.knowledgeGraph.nodes.length.toString();
   }
 
   /**
    * Start performance monitoring
    */
   private startPerformanceMonitoring(): void {
+    const elements = this.getElements();
+
     const updateMetrics = () => {
       this.performanceMonitor.frameCount++;
       const currentTime = performance.now();
@@ -404,8 +467,8 @@ export class UIController implements IUIController {
         this.performanceMonitor.fps = Math.round(
           this.performanceMonitor.frameCount * 1000 / (currentTime - this.performanceMonitor.lastTime)
         );
-        this.elements.fps.textContent = this.performanceMonitor.fps.toString();
-        this.elements.memUsage.textContent = this.visualizationManager.getMemoryUsage().toFixed(1) + 'MB';
+        elements.fps.textContent = this.performanceMonitor.fps.toString();
+        elements.memUsage.textContent = this.visualizationManager.getMemoryUsage().toFixed(1) + 'MB';
 
         this.performanceMonitor.frameCount = 0;
         this.performanceMonitor.lastTime = currentTime;
@@ -429,6 +492,7 @@ export class UIController implements IUIController {
    * Announce message to screen readers
    */
   private announceToScreenReader(message: string): void {
-    this.elements.srAnnouncer.textContent = message;
+    const elements = this.getElements();
+    elements.srAnnouncer.textContent = message;
   }
 }
