@@ -476,3 +476,244 @@ body {
   }
   .middle-panel { height: 50vh; min-height: 400px; }
 }
+
+
+/* ==========================================
+   API Key Management Section
+   ========================================== */
+
+.api-key-section {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--bg-light);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.api-key-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+}
+
+.api-key-header h3 {
+  font-size: 1rem;
+  color: var(--primary-accent);
+  margin: 0;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-light);
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  font-size: 1.2rem;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.icon-btn:hover {
+  background: var(--bg-medium);
+}
+
+.api-key-content {
+  display: block;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.api-key-status {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--bg-medium);
+  border-radius: 6px;
+  border-left: 3px solid var(--primary-accent);
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-icon {
+  font-size: 1.2rem;
+}
+
+.api-key-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.api-key-input-group label {
+  font-size: 0.9rem;
+  color: var(--text-medium);
+  font-weight: 500;
+}
+
+.api-key-info {
+  font-size: 0.85rem;
+  color: var(--text-medium);
+  padding: 0.5rem;
+  background: var(--bg-medium);
+  border-radius: 4px;
+  border-left: 2px solid var(--secondary-accent);
+}
+
+.api-key-info a {
+  color: var(--primary-accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.api-key-info a:hover {
+  text-decoration: underline;
+}
+
+.input-with-buttons {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.input-with-buttons input {
+  flex: 1;
+  padding: 0.75rem;
+  background: var(--bg-dark);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-light);
+  font-size: 0.9rem;
+  font-family: 'Courier New', monospace;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-with-buttons input:focus {
+  outline: none;
+  border-color: var(--primary-accent);
+  box-shadow: 0 0 0 2px rgba(100, 255, 218, 0.1);
+}
+
+.input-with-buttons input::placeholder {
+  color: var(--text-dark);
+}
+
+.api-key-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.btn-primary {
+  background: var(--primary-accent);
+  color: var(--bg-dark);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #52e6c3;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(100, 255, 218, 0.3);
+}
+
+.btn-secondary {
+  background: var(--bg-medium);
+  color: var(--text-light);
+  border: 1px solid var(--border-light);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-light);
+  border-color: var(--primary-accent);
+}
+
+.btn-danger {
+  background: var(--warning-accent);
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #ff5252;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.api-key-message {
+  display: none;
+  padding: 0.75rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  animation: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.api-key-message.success {
+  background: rgba(57, 211, 83, 0.15);
+  border: 1px solid var(--status-ready);
+  color: var(--status-ready);
+}
+
+.api-key-message.error {
+  background: rgba(255, 107, 107, 0.15);
+  border: 1px solid var(--warning-accent);
+  color: var(--warning-accent);
+}
+
+.api-key-message.info {
+  background: rgba(100, 255, 218, 0.15);
+  border: 1px solid var(--primary-accent);
+  color: var(--primary-accent);
+}
+
+/* Responsive adjustments for API key section */
+@media (max-width: 768px) {
+  .api-key-actions {
+    flex-direction: column;
+  }
+  
+  .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

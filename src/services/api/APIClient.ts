@@ -1,13 +1,21 @@
 /**
- * API Client - Handles communication with backend API proxy
+ * API Client - Handles communication with AI providers directly or via backend proxy
  * @module services/api/APIClient
  */
 
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { IAPIClient, APIResponse, AIModel, ThoughtNode, APIProvider } from '../../types';
+import { ClaudeAPIProvider } from './providers/ClaudeAPIProvider';
+import { GeminiAPIProvider } from './providers/GeminiAPIProvider';
+import { OpenAIAPIProvider } from './providers/OpenAIAPIProvider';
+import { APIKeyStorage } from '../storage/APIKeyStorage';
 
 export class APIClient implements IAPIClient {
   private client: AxiosInstance;
+  private claudeProvider: ClaudeAPIProvider;
+  private geminiProvider: GeminiAPIProvider;
+  private openaiProvider: OpenAIAPIProvider;
+  private apiKeyStorage: APIKeyStorage;
 
   constructor(baseURL: string = '/api') {
     this.client = axios.create({
@@ -26,12 +34,34 @@ export class APIClient implements IAPIClient {
         return Promise.reject(this.handleAPIError(error));
       }
     );
+
+    // Initialize API providers
+    this.claudeProvider = new ClaudeAPIProvider();
+    this.geminiProvider = new GeminiAPIProvider();
+    this.openaiProvider = new OpenAIAPIProvider();
+    this.apiKeyStorage = new APIKeyStorage();
   }
 
   /**
    * Generate AI response for a given prompt
+   * Uses direct API calls if API key is stored locally, otherwise falls back to proxy or simulation
    */
   async generateResponse(prompt: string, model: AIModel): Promise<APIResponse> {
+    // Try to get API key from local storage first
+    const apiKey = this.apiKeyStorage.getAPIKey(model);
+    
+    if (apiKey) {
+      // Use direct API call with stored key
+      try {
+        console.log(`Using direct ${model} API call with stored key`);
+        return await this.callProviderDirectly(prompt, model, apiKey);
+      } catch (error: any) {
+        console.error(`Direct ${model} API call failed:`, error);
+        throw error; // Don't fallback silently, show the error to user
+      }
+    }
+    
+    // No API key stored - try backend proxy or fallback to simulation
     try {
       const response: AxiosResponse<APIResponse> = await this.client.post('/generate', {
         prompt,
@@ -45,6 +75,50 @@ export class APIClient implements IAPIClient {
       console.warn('API unavailable, using simulated response');
       return this.generateSimulatedResponse(prompt, model);
     }
+  }
+
+  /**
+   * Call API provider directly with stored API key
+   */
+  private async callProviderDirectly(prompt: string, model: AIModel, apiKey: string): Promise<APIResponse> {
+    switch (model) {
+      case 'claude':
+        return await this.claudeProvider.generateResponse(prompt, apiKey);
+      case 'gemini':
+        return await this.geminiProvider.generateResponse(prompt, apiKey);
+      case 'gpt':
+        return await this.openaiProvider.generateResponse(prompt, apiKey);
+      default:
+        throw new Error(`Unsupported model: ${model}`);
+    }
+  }
+
+  /**
+   * Test API key for a specific provider
+   */
+  async testAPIKey(model: AIModel, apiKey: string): Promise<boolean> {
+    try {
+      switch (model) {
+        case 'claude':
+          return await this.claudeProvider.testConnection(apiKey);
+        case 'gemini':
+          return await this.geminiProvider.testConnection(apiKey);
+        case 'gpt':
+          return await this.openaiProvider.testConnection(apiKey);
+        default:
+          return false;
+      }
+    } catch (error) {
+      console.error(`API key test failed for ${model}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Get API key storage instance
+   */
+  getAPIKeyStorage(): APIKeyStorage {
+    return this.apiKeyStorage;
   }
 
   /**
