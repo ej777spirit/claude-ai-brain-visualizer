@@ -47,6 +47,20 @@ export class UIController implements IUIController {
     loadingOverlay: HTMLDivElement;
     // Screen reader announcer
     srAnnouncer: HTMLDivElement;
+    // API Key Management
+    toggleApiKeyBtn: HTMLButtonElement;
+    apiKeyContent: HTMLDivElement;
+    apiKeyInput: HTMLInputElement;
+    saveApiKeyBtn: HTMLButtonElement;
+    testApiKeyBtn: HTMLButtonElement;
+    clearApiKeyBtn: HTMLButtonElement;
+    toggleKeyVisibility: HTMLButtonElement;
+    apiKeyMessage: HTMLDivElement;
+    keyStatusIcon: HTMLSpanElement;
+    keyStatusText: HTMLSpanElement;
+    currentModelName: HTMLSpanElement;
+    apiKeyInfo: HTMLDivElement;
+    apiKeyLink: HTMLAnchorElement;
   } | null = null;
 
   private performanceMonitor: {
@@ -105,7 +119,21 @@ export class UIController implements IUIController {
       // Loading overlay
       loadingOverlay: document.getElementById('loadingOverlay') as HTMLDivElement,
       // Screen reader announcer
-      srAnnouncer: document.getElementById('sr-announcer') as HTMLDivElement
+      srAnnouncer: document.getElementById('sr-announcer') as HTMLDivElement,
+      // API Key Management
+      toggleApiKeyBtn: document.getElementById('toggleApiKeyBtn') as HTMLButtonElement,
+      apiKeyContent: document.getElementById('apiKeyContent') as HTMLDivElement,
+      apiKeyInput: document.getElementById('apiKeyInput') as HTMLInputElement,
+      saveApiKeyBtn: document.getElementById('saveApiKeyBtn') as HTMLButtonElement,
+      testApiKeyBtn: document.getElementById('testApiKeyBtn') as HTMLButtonElement,
+      clearApiKeyBtn: document.getElementById('clearApiKeyBtn') as HTMLButtonElement,
+      toggleKeyVisibility: document.getElementById('toggleKeyVisibility') as HTMLButtonElement,
+      apiKeyMessage: document.getElementById('apiKeyMessage') as HTMLDivElement,
+      keyStatusIcon: document.getElementById('keyStatusIcon') as HTMLSpanElement,
+      keyStatusText: document.getElementById('keyStatusText') as HTMLSpanElement,
+      currentModelName: document.getElementById('currentModelName') as HTMLSpanElement,
+      apiKeyInfo: document.getElementById('apiKeyInfo') as HTMLDivElement,
+      apiKeyLink: document.getElementById('apiKeyLink') as HTMLAnchorElement
     };
   }
 
@@ -133,6 +161,9 @@ export class UIController implements IUIController {
     this.updateStatus('Ready to analyze', 'ready');
     this.updateStats([]);
     this.showLoading(false);
+    
+    // Initialize API key UI
+    this.updateAPIKeyUI();
 
     console.log('UI Controller initialized');
   }
@@ -161,6 +192,13 @@ export class UIController implements IUIController {
     elements.saveBtn.addEventListener('click', () => this.handleSave());
     elements.loadBtn.addEventListener('click', () => this.handleLoad());
     elements.exportBtn.addEventListener('click', () => this.handleExport());
+
+    // API Key Management
+    elements.toggleApiKeyBtn.addEventListener('click', () => this.toggleAPIKeySection());
+    elements.saveApiKeyBtn.addEventListener('click', () => this.handleSaveAPIKey());
+    elements.testApiKeyBtn.addEventListener('click', () => this.handleTestAPIKey());
+    elements.clearApiKeyBtn.addEventListener('click', () => this.handleClearAPIKey());
+    elements.toggleKeyVisibility.addEventListener('click', () => this.toggleKeyVisibility());
   }
 
   /**
@@ -186,6 +224,9 @@ export class UIController implements IUIController {
 
     // Update state
     this.stateManager.dispatch({ type: 'MODEL_CHANGED', payload: model });
+
+    // Update API key UI for new model
+    this.updateAPIKeyUI();
 
     // Add system message
     this.addMessage(`Switched to ${model.toUpperCase()}`, 'system');
@@ -514,5 +555,214 @@ export class UIController implements IUIController {
   private announceToScreenReader(message: string): void {
     const elements = this.getElements();
     elements.srAnnouncer.textContent = message;
+  }
+
+  /**
+   * ============================
+   * API Key Management Methods
+   * ============================
+   */
+
+  /**
+   * Update API key UI based on current model
+   */
+  private updateAPIKeyUI(): void {
+    const elements = this.getElements();
+    const state = this.stateManager.getState();
+    const model = state.currentModel;
+    const storage = this.apiClient.getAPIKeyStorage();
+
+    // Update model-specific UI text
+    const modelNames = {
+      claude: 'Claude',
+      gemini: 'Gemini',
+      gpt: 'ChatGPT'
+    };
+    
+    const apiKeyLinks = {
+      claude: 'https://console.anthropic.com/',
+      gemini: 'https://aistudio.google.com/app/apikey',
+      gpt: 'https://platform.openai.com/api-keys'
+    };
+
+    const apiKeyInfoText = {
+      claude: 'Get your Claude API key from: ',
+      gemini: 'Get your Gemini API key from: ',
+      gpt: 'Get your OpenAI API key from: '
+    };
+
+    const apiKeyPlaceholders = {
+      claude: 'sk-ant-...',
+      gemini: 'AIza...',
+      gpt: 'sk-...'
+    };
+
+    elements.currentModelName.textContent = modelNames[model];
+    elements.apiKeyLink.href = apiKeyLinks[model];
+    elements.apiKeyLink.textContent = apiKeyLinks[model].replace('https://', '');
+    elements.apiKeyInfo.innerHTML = `${apiKeyInfoText[model]} <a href="${apiKeyLinks[model]}" target="_blank" rel="noopener noreferrer">${apiKeyLinks[model].replace('https://', '')}</a>`;
+    elements.apiKeyInput.placeholder = apiKeyPlaceholders[model];
+
+    // Check if API key exists
+    const hasKey = storage.hasAPIKey(model);
+    
+    if (hasKey) {
+      const maskedKey = storage.getMaskedAPIKey(model);
+      elements.keyStatusIcon.textContent = '🟢';
+      elements.keyStatusText.textContent = `API key configured: ${maskedKey}`;
+      elements.apiKeyInput.value = '';
+      elements.apiKeyInput.placeholder = `Current: ${maskedKey}`;
+      elements.apiStatusDot.style.backgroundColor = '#4ade80';
+      elements.apiStatusText.textContent = `Live API (${modelNames[model]})`;
+    } else {
+      elements.keyStatusIcon.textContent = '⚪';
+      elements.keyStatusText.textContent = 'No API key configured';
+      elements.apiKeyInput.value = '';
+      elements.apiStatusDot.style.backgroundColor = '#fbbf24';
+      elements.apiStatusText.textContent = 'Demo Mode';
+    }
+  }
+
+  /**
+   * Toggle API key section visibility
+   */
+  private toggleAPIKeySection(): void {
+    const elements = this.getElements();
+    const isHidden = elements.apiKeyContent.style.display === 'none';
+    
+    if (isHidden) {
+      elements.apiKeyContent.style.display = 'block';
+      elements.toggleApiKeyBtn.textContent = '▼';
+    } else {
+      elements.apiKeyContent.style.display = 'none';
+      elements.toggleApiKeyBtn.textContent = '▶';
+    }
+  }
+
+  /**
+   * Toggle API key visibility
+   */
+  private toggleKeyVisibility(): void {
+    const elements = this.getElements();
+    const input = elements.apiKeyInput;
+    
+    if (input.type === 'password') {
+      input.type = 'text';
+      elements.toggleKeyVisibility.textContent = '🙈';
+    } else {
+      input.type = 'password';
+      elements.toggleKeyVisibility.textContent = '👁️';
+    }
+  }
+
+  /**
+   * Handle save API key
+   */
+  private async handleSaveAPIKey(): Promise<void> {
+    const elements = this.getElements();
+    const state = this.stateManager.getState();
+    const model = state.currentModel;
+    const apiKey = elements.apiKeyInput.value.trim();
+    const storage = this.apiClient.getAPIKeyStorage();
+
+    if (!apiKey) {
+      this.showAPIKeyMessage('Please enter an API key', 'error');
+      return;
+    }
+
+    // Validate format
+    const validation = storage.validateAPIKeyFormat(model, apiKey);
+    if (!validation.valid) {
+      this.showAPIKeyMessage(validation.message, 'error');
+      return;
+    }
+
+    // Save API key
+    try {
+      storage.saveAPIKey(model, apiKey);
+      this.showAPIKeyMessage('API key saved successfully! ✓', 'success');
+      this.updateAPIKeyUI();
+      elements.apiKeyInput.value = '';
+      
+      this.announceToScreenReader('API key saved successfully');
+    } catch (error: any) {
+      this.showAPIKeyMessage(`Failed to save: ${error.message}`, 'error');
+    }
+  }
+
+  /**
+   * Handle test API key
+   */
+  private async handleTestAPIKey(): Promise<void> {
+    const elements = this.getElements();
+    const state = this.stateManager.getState();
+    const model = state.currentModel;
+    const storage = this.apiClient.getAPIKeyStorage();
+    const apiKey = elements.apiKeyInput.value.trim() || storage.getAPIKey(model);
+
+    if (!apiKey) {
+      this.showAPIKeyMessage('No API key to test', 'error');
+      return;
+    }
+
+    // Show testing message
+    this.showAPIKeyMessage('Testing API key... ⏳', 'info');
+    elements.testApiKeyBtn.disabled = true;
+
+    try {
+      const isValid = await this.apiClient.testAPIKey(model, apiKey);
+      
+      if (isValid) {
+        this.showAPIKeyMessage('API key is valid! ✓', 'success');
+        this.announceToScreenReader('API key test successful');
+      } else {
+        this.showAPIKeyMessage('API key test failed. Key may be invalid.', 'error');
+        this.announceToScreenReader('API key test failed');
+      }
+    } catch (error: any) {
+      this.showAPIKeyMessage(`Test failed: ${error.message}`, 'error');
+    } finally {
+      elements.testApiKeyBtn.disabled = false;
+    }
+  }
+
+  /**
+   * Handle clear API key
+   */
+  private handleClearAPIKey(): void {
+    const elements = this.getElements();
+    const state = this.stateManager.getState();
+    const model = state.currentModel;
+    const storage = this.apiClient.getAPIKeyStorage();
+
+    if (!storage.hasAPIKey(model)) {
+      this.showAPIKeyMessage('No API key to clear', 'info');
+      return;
+    }
+
+    if (confirm(`Are you sure you want to clear the ${model.toUpperCase()} API key?`)) {
+      storage.removeAPIKey(model);
+      this.showAPIKeyMessage('API key cleared', 'success');
+      this.updateAPIKeyUI();
+      elements.apiKeyInput.value = '';
+      this.announceToScreenReader('API key cleared');
+    }
+  }
+
+  /**
+   * Show API key message
+   */
+  private showAPIKeyMessage(message: string, type: 'success' | 'error' | 'info'): void {
+    const elements = this.getElements();
+    const messageEl = elements.apiKeyMessage;
+    
+    messageEl.textContent = message;
+    messageEl.className = `api-key-message ${type}`;
+    messageEl.style.display = 'block';
+
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+      messageEl.style.display = 'none';
+    }, 5000);
   }
 }

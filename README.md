@@ -70,12 +70,74 @@ This will start:
 
 ## 🔐 API Configuration
 
-The application uses a secure proxy server to handle API calls. **Never expose API keys in the frontend.**
+The application supports **three different AI platforms** with flexible API key management:
 
-### Supported APIs
-- **Anthropic Claude**: Set `ANTHROPIC_API_KEY` in `.env`
-- **OpenAI GPT**: Set `OPENAI_API_KEY` in `.env`
-- **Google Gemini**: Set `GOOGLE_API_KEY` in `.env`
+### Two Ways to Configure API Keys
+
+#### Option 1: Client-Side Storage (Recommended for Personal Use)
+Store API keys directly in your browser's local storage for quick, convenient access:
+
+1. **Select your AI platform** (Claude, Gemini, or GPT-4) from the model selector
+2. **Click the API Key Configuration** section (🔑 icon)
+3. **Enter your API key** in the platform-specific input field
+4. **Save the key** - it will be securely stored in your browser's local storage
+5. **Test the connection** to verify your key works
+
+Your API keys are stored locally and never transmitted to any server except the official AI provider APIs.
+
+#### Option 2: Backend Proxy (Recommended for Production)
+For production deployments or shared environments, configure API keys on the backend:
+
+Set environment variables in `.env`:
+```env
+ANTHROPIC_API_KEY=your_claude_key
+OPENAI_API_KEY=your_openai_key
+GOOGLE_API_KEY=your_gemini_key
+```
+
+### How to Obtain API Keys
+
+#### 🤖 Claude (Anthropic)
+1. Visit [https://console.anthropic.com/](https://console.anthropic.com/)
+2. Sign up or log in to your account
+3. Navigate to **API Keys** section
+4. Click **Create Key** 
+5. Copy your API key (starts with `sk-ant-`)
+6. **Pricing**: Pay-as-you-go, starting at $3 per million tokens
+7. **Free credits**: New accounts may receive initial credits
+
+#### 🔮 Gemini (Google AI)
+1. Visit [https://aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
+2. Sign in with your Google account
+3. Click **Create API Key**
+4. Select or create a Google Cloud project
+5. Copy your API key (starts with `AIza`)
+6. **Pricing**: Free tier available with rate limits, paid tier for higher usage
+7. **Free tier**: 60 requests per minute
+
+#### 💬 ChatGPT (OpenAI)
+1. Visit [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+2. Sign up or log in to your OpenAI account
+3. Navigate to **API Keys** section
+4. Click **Create new secret key**
+5. Copy your API key immediately (starts with `sk-`)
+6. **Pricing**: Pay-as-you-go, starting at $0.03 per 1K tokens for GPT-4o
+7. **Note**: Requires adding payment method
+
+### API Key Security Best Practices
+
+✅ **DO:**
+- Store API keys in browser local storage for personal use
+- Use environment variables for production deployments
+- Regularly rotate your API keys
+- Monitor your API usage and billing
+- Use separate keys for development and production
+
+❌ **DON'T:**
+- Share your API keys with others
+- Commit API keys to version control (use `.env` files)
+- Use the same key across multiple projects
+- Expose keys in client-side code for public websites
 
 ### Demo Mode
 If no API keys are provided, the application will use **simulated responses** for demonstration with:
@@ -83,6 +145,21 @@ If no API keys are provided, the application will use **simulated responses** fo
 - Realistic AI thought process visualization
 - Full functionality without external API costs
 - Easy upgrade path by adding API keys
+
+### Managing Your API Keys
+
+The application provides a user-friendly interface to:
+- **Save** API keys for each platform
+- **Test** API key validity before use
+- **Clear** stored API keys when needed
+- **View** masked versions of stored keys
+- **Switch** between platforms seamlessly
+
+Keys are stored per-platform, so you can:
+- Use Claude for some queries
+- Use Gemini for others
+- Use GPT-4 for specific tasks
+- Switch models without re-entering keys
 
 ## 🛠️ Development
 

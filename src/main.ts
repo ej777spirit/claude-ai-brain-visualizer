@@ -106,6 +106,51 @@ function createUI(): void {
             <button class="model-btn" data-model="gemini">Gemini</button>
             <button class="model-btn" data-model="gpt">GPT-4</button>
           </div>
+
+          <!-- API Key Management Section -->
+          <div class="api-key-section" id="apiKeySection">
+            <div class="api-key-header">
+              <h3>🔑 API Key Configuration</h3>
+              <button class="icon-btn" id="toggleApiKeyBtn" title="Toggle API Key Section">⚙️</button>
+            </div>
+            
+            <div class="api-key-content" id="apiKeyContent">
+              <div class="api-key-status" id="apiKeyStatus">
+                <div class="status-indicator">
+                  <span class="status-icon" id="keyStatusIcon">⚪</span>
+                  <span id="keyStatusText">No API key configured</span>
+                </div>
+              </div>
+
+              <div class="api-key-input-group" id="apiKeyInputGroup">
+                <label for="apiKeyInput" id="apiKeyLabel">
+                  Enter your <span id="currentModelName">Claude</span> API Key
+                </label>
+                <div class="api-key-info" id="apiKeyInfo">
+                  Get your Claude API key from: 
+                  <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" id="apiKeyLink">
+                    console.anthropic.com
+                  </a>
+                </div>
+                <div class="input-with-buttons">
+                  <input 
+                    type="password" 
+                    id="apiKeyInput" 
+                    placeholder="sk-ant-..." 
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                  <button class="icon-btn" id="toggleKeyVisibility" title="Toggle visibility">👁️</button>
+                </div>
+                <div class="api-key-actions">
+                  <button class="btn btn-primary" id="saveApiKeyBtn">💾 Save Key</button>
+                  <button class="btn btn-secondary" id="testApiKeyBtn">🔬 Test</button>
+                  <button class="btn btn-danger" id="clearApiKeyBtn">🗑️ Clear</button>
+                </div>
+                <div class="api-key-message" id="apiKeyMessage"></div>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="chat-container" id="chatContainer">
           <div class="message ai-message">
