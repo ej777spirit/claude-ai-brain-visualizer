@@ -1,6 +1,12 @@
 // ==========================================
 // REFACTORED ARCHITECTURE IMPLEMENTATION
 // Complete AI Brain Visualizer with Claude Integration
+// 
+// FIXES APPLIED:
+// 1. Node Y-drift accumulation bug - now oscillates around base position
+// 2. Connection lines now update dynamically with node movement
+// 3. Memory leak - proper disposal tracking with consistent format
+// 4. Animation cancellation support for view changes
 // ==========================================
 
 /**
@@ -123,6 +129,12 @@ class AIAPISimulator {
 
 /**
  * Visualization Manager - Three.js scene management
+ * 
+ * FIXES APPLIED:
+ * 1. Node Y-drift - stores originalY and oscillates around it
+ * 2. Connection lines - dynamically update with node movement
+ * 3. Memory leak - consistent disposal tracking
+ * 4. Animation cancellation - prevents overlapping animations
  */
 class VisualizationManager {
   constructor(canvas) {
@@ -130,6 +142,13 @@ class VisualizationManager {
     this.nodes = [];
     this.lines = [];
     this.disposables = [];
+    
+    // FIX #2: Track connection data for dynamic updates
+    this.connectionData = [];
+    
+    // FIX #4: Track active position animations
+    this.activeAnimations = new Map();
+    
     this.init();
   }
 
@@ -183,6 +202,7 @@ class VisualizationManager {
     });
     this.centralSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
     this.scene.add(this.centralSphere);
+    // FIX #3: Consistent disposal tracking format
     this.disposables.push({ geometry: sphereGeometry, material: sphereMaterial });
 
     // Handle resize
@@ -202,12 +222,12 @@ class VisualizationManager {
       this.nodes.push(node);
     });
 
-    // Create connections
+    // Create connections with tracking data
     thoughts.forEach(thought => {
       if (thought.parent && nodeMap.has(thought.parent)) {
         const parentNode = nodeMap.get(thought.parent);
         const childNode = nodeMap.get(thought.id);
-        this.createConnection(parentNode, childNode);
+        this.createConnection(parentNode, childNode, thought.parent, thought.id);
       }
     });
   }
@@ -234,17 +254,22 @@ class VisualizationManager {
       Math.sin(angle) * radius
     );
 
+    // FIX #1: Store original Y position for oscillation
+    node.userData.originalY = height;
+
     const scale = 0.5 + (thought.weight / 100) * 0.5;
     node.scale.setScalar(scale);
 
     this.scene.add(node);
+    // FIX #3: Consistent disposal tracking format
     this.disposables.push({ geometry, material });
 
     return node;
   }
 
-  createConnection(node1, node2) {
-    const points = [node1.position, node2.position];
+  // FIX #2: Create connection with tracking for dynamic updates
+  createConnection(node1, node2, fromId, toId) {
+    const points = [node1.position.clone(), node2.position.clone()];
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineBasicMaterial({
       color: 0x2a4470,
@@ -255,27 +280,77 @@ class VisualizationManager {
     const line = new THREE.Line(geometry, material);
     this.scene.add(line);
     this.lines.push(line);
+    
+    // FIX #2: Store connection data for dynamic updates
+    this.connectionData.push({
+      line,
+      fromId,
+      toId
+    });
+    
+    // FIX #3: Consistent disposal tracking format
     this.disposables.push({ geometry, material });
   }
 
+  // FIX #2: Update connection line positions
+  updateConnectionPositions() {
+    const nodeMap = new Map();
+    this.nodes.forEach(node => {
+      nodeMap.set(node.userData.id, node);
+    });
+
+    this.connectionData.forEach(conn => {
+      const fromNode = nodeMap.get(conn.fromId);
+      const toNode = nodeMap.get(conn.toId);
+      
+      if (fromNode && toNode && conn.line.geometry) {
+        const positions = conn.line.geometry.attributes.position;
+        if (positions) {
+          const posArray = positions.array;
+          
+          // Update start point
+          posArray[0] = fromNode.position.x;
+          posArray[1] = fromNode.position.y;
+          posArray[2] = fromNode.position.z;
+          
+          // Update end point
+          posArray[3] = toNode.position.x;
+          posArray[4] = toNode.position.y;
+          posArray[5] = toNode.position.z;
+          
+          positions.needsUpdate = true;
+        }
+      }
+    });
+  }
+
   clearScene() {
+    // FIX #4: Cancel all active animations
+    this.activeAnimations.forEach((frameId) => {
+      cancelAnimationFrame(frameId);
+    });
+    this.activeAnimations.clear();
+
     // Remove nodes and lines
     this.nodes.forEach(node => this.scene.remove(node));
     this.lines.forEach(line => this.scene.remove(line));
 
-    // Dispose of geometries and materials
+    // FIX #3: Dispose of geometries and materials consistently
     this.disposables.forEach(({ geometry, material }) => {
-      if (geometry) geometry.dispose();
-      if (material) material.dispose();
+      if (geometry && typeof geometry.dispose === 'function') geometry.dispose();
+      if (material && typeof material.dispose === 'function') material.dispose();
     });
 
     this.nodes = [];
     this.lines = [];
+    this.connectionData = [];
     this.disposables = [];
   }
 
   animate() {
     requestAnimationFrame(() => this.animate());
+
+    const time = Date.now() * 0.001;
 
     // Animate central sphere
     if (this.centralSphere) {
@@ -283,15 +358,63 @@ class VisualizationManager {
       this.centralSphere.rotation.y += 0.002;
     }
 
-    // Animate nodes
+    // FIX #1: Animate nodes with oscillation around base position (not accumulating)
     this.nodes.forEach((node, i) => {
-      const time = Date.now() * 0.001;
-      node.position.y += Math.sin(time + i) * 0.01;
-      node.rotation.y += 0.01;
+      // Get the stored original Y position, or use current position as fallback
+      const baseY = node.userData.originalY !== undefined ? node.userData.originalY : node.position.y;
+      
+      // Oscillate around base position instead of adding to current position
+      node.position.y = baseY + Math.sin(time + i * 0.1) * 0.3;
+      node.rotation.y += 0.005;
     });
+
+    // FIX #2: Update connection lines to follow node positions
+    this.updateConnectionPositions();
 
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  // FIX #4: Animate node to position with cancellation support
+  animateNodeToPosition(node, target, duration = 500) {
+    const nodeUuid = node.uuid;
+    
+    // Cancel existing animation for this node
+    if (this.activeAnimations.has(nodeUuid)) {
+      cancelAnimationFrame(this.activeAnimations.get(nodeUuid));
+      this.activeAnimations.delete(nodeUuid);
+    }
+
+    const start = {
+      x: node.position.x,
+      y: node.position.y,
+      z: node.position.z
+    };
+    const startTime = Date.now();
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+
+      node.position.x = start.x + (target.x - start.x) * eased;
+      node.position.y = start.y + (target.y - start.y) * eased;
+      node.position.z = start.z + (target.z - start.z) * eased;
+
+      if (progress < 1) {
+        const frameId = requestAnimationFrame(animate);
+        this.activeAnimations.set(nodeUuid, frameId);
+      } else {
+        this.activeAnimations.delete(nodeUuid);
+        // FIX #1: Update base position after animation completes
+        node.userData.originalY = target.y;
+      }
+    };
+
+    const frameId = requestAnimationFrame(animate);
+    this.activeAnimations.set(nodeUuid, frameId);
   }
 
   handleResize() {
@@ -553,7 +676,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setTimeout(() => {
     const app = new ApplicationController();
     loadingOverlay.classList.remove('active');
-    console.log('AI Brain Visualizer Pro - Claude Integration initialized');
+    console.log('AI Brain Visualizer Pro - Claude Integration initialized (with bug fixes)');
 
     // Announce to screen readers
     const announcer = document.getElementById('sr-announcer');

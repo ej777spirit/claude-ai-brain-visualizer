@@ -1,6 +1,12 @@
 /**
  * Visualization Manager - Three.js scene management and 3D rendering
  * @module visualization/VisualizationManager
+ * 
+ * FIXES APPLIED:
+ * 1. Node Y-drift accumulation bug - now oscillates around base position
+ * 2. Connection lines now update dynamically with node movement
+ * 3. Memory leak - proper disposal tracking
+ * 4. Animation cancellation support
  */
 
 import * as THREE from 'three';
@@ -8,20 +14,33 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { IVisualizationManager, ThoughtNode } from '../types';
 import { CONFIG } from '../types';
 
+interface ConnectionData {
+  line: THREE.Line;
+  fromNodeId: number;
+  toNodeId: number;
+}
+
 export class VisualizationManager implements IVisualizationManager {
   private canvas: HTMLCanvasElement;
-  private scene: any;
-  private camera: any;
-  private renderer: any;
-  private controls: any;
+  private scene: THREE.Scene | null = null;
+  private camera: THREE.PerspectiveCamera | null = null;
+  private renderer: THREE.WebGLRenderer | null = null;
+  private controls: OrbitControls | null = null;
 
-  private nodes: any[] = [];
-  private lines: any[] = [];
-  private disposables: any[] = [];
-  private centralSphere: any;
+  private nodes: THREE.Mesh[] = [];
+  private lines: THREE.Line[] = [];
+  private connectionData: ConnectionData[] = [];
+  private disposables: Set<{ dispose: () => void }> = new Set();
+  private centralSphere: THREE.Mesh | null = null;
 
   private animationId: number | null = null;
   private isInitialized = false;
+  
+  // FIX #1: Store original positions for oscillation
+  private nodeBasePositions: Map<number, THREE.Vector3> = new Map();
+  
+  // FIX #4: Track active position animations
+  private activeAnimations: Map<string, number> = new Map();
 
   constructor(canvasId: string) {
     this.canvas = document.getElementById(canvasId) as HTMLCanvasElement;
@@ -85,6 +104,8 @@ export class VisualizationManager implements IVisualizationManager {
    * Setup orbit controls
    */
   private setupControls(): void {
+    if (!this.camera || !this.renderer) return;
+    
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
@@ -99,9 +120,12 @@ export class VisualizationManager implements IVisualizationManager {
    * Setup scene lighting
    */
   private setupLighting(): void {
+    if (!this.scene) return;
+
     // Ambient light
     const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
     this.scene.add(ambientLight);
+    this.disposables.add(ambientLight);
 
     // Directional light
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
@@ -110,20 +134,21 @@ export class VisualizationManager implements IVisualizationManager {
     directionalLight.shadow.mapSize.width = 2048;
     directionalLight.shadow.mapSize.height = 2048;
     this.scene.add(directionalLight);
+    this.disposables.add(directionalLight);
 
     // Point light for accent
     const pointLight = new THREE.PointLight(CONFIG.THOUGHT_CATEGORIES.analysis.color, 0.5, 100);
     pointLight.position.set(0, 20, 0);
     this.scene.add(pointLight);
-
-    // Add lights to disposables
-    this.disposables.push(ambientLight, directionalLight, pointLight);
+    this.disposables.add(pointLight);
   }
 
   /**
    * Create central sphere
    */
   private createCentralSphere(): void {
+    if (!this.scene) return;
+
     const geometry = new THREE.SphereGeometry(2, 32, 32);
     const material = new THREE.MeshPhysicalMaterial({
       color: CONFIG.THOUGHT_CATEGORIES.analysis.color,
@@ -136,7 +161,8 @@ export class VisualizationManager implements IVisualizationManager {
     this.centralSphere = new THREE.Mesh(geometry, material);
     this.scene.add(this.centralSphere);
 
-    this.disposables.push(geometry, material);
+    this.disposables.add(geometry);
+    this.disposables.add(material);
   }
 
   /**
@@ -162,23 +188,25 @@ export class VisualizationManager implements IVisualizationManager {
       this.nodes.push(node);
     });
 
-    // Create connections
+    // Position nodes in 3D space first
+    this.positionNodes(thoughts, nodeMap);
+
+    // Create connections after positioning
     thoughts.forEach(thought => {
       if (thought.parent && nodeMap.has(thought.parent)) {
         const parentNode = nodeMap.get(thought.parent)!;
         const childNode = nodeMap.get(thought.id)!;
-        this.createConnection(parentNode, childNode);
+        this.createConnection(parentNode, childNode, thought.parent, thought.id);
       }
     });
-
-    // Position nodes in 3D space
-    this.positionNodes(thoughts, nodeMap);
   }
 
   /**
    * Create a thought node
    */
   private createNode(thought: ThoughtNode): THREE.Mesh {
+    if (!this.scene) throw new Error('Scene not initialized');
+
     const geometry = new THREE.SphereGeometry(1, 16, 16);
     const material = new THREE.MeshPhongMaterial({
       color: CONFIG.THOUGHT_CATEGORIES[thought.category].color,
@@ -187,7 +215,7 @@ export class VisualizationManager implements IVisualizationManager {
     });
 
     const node = new THREE.Mesh(geometry, material);
-    node.userData = thought;
+    node.userData = { ...thought, originalY: 0 }; // Store original Y for animation
 
     // Set scale based on weight
     const scale = CONFIG.VISUALIZATION.nodeSize.min +
@@ -198,16 +226,19 @@ export class VisualizationManager implements IVisualizationManager {
     this.scene.add(node);
 
     // Track for disposal
-    this.disposables.push(geometry, material);
+    this.disposables.add(geometry);
+    this.disposables.add(material);
 
     return node;
   }
 
   /**
-   * Create connection between nodes
+   * FIX #2: Create connection between nodes with tracking for dynamic updates
    */
-  private createConnection(node1: THREE.Mesh, node2: THREE.Mesh): void {
-    const points = [node1.position, node2.position];
+  private createConnection(node1: THREE.Mesh, node2: THREE.Mesh, fromId: number, toId: number): void {
+    if (!this.scene) return;
+
+    const points = [node1.position.clone(), node2.position.clone()];
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineBasicMaterial({
       color: 0x2a4470,
@@ -218,8 +249,50 @@ export class VisualizationManager implements IVisualizationManager {
     const line = new THREE.Line(geometry, material);
     this.scene.add(line);
     this.lines.push(line);
+    
+    // FIX #2: Store connection data for dynamic updates
+    this.connectionData.push({
+      line,
+      fromNodeId: fromId,
+      toNodeId: toId
+    });
 
-    this.disposables.push(geometry, material);
+    this.disposables.add(geometry);
+    this.disposables.add(material);
+  }
+
+  /**
+   * FIX #2: Update connection line positions based on current node positions
+   */
+  private updateConnectionPositions(): void {
+    const nodeMap = new Map<number, THREE.Mesh>();
+    this.nodes.forEach(node => {
+      nodeMap.set(node.userData.id, node);
+    });
+
+    this.connectionData.forEach(conn => {
+      const fromNode = nodeMap.get(conn.fromNodeId);
+      const toNode = nodeMap.get(conn.toNodeId);
+      
+      if (fromNode && toNode && conn.line.geometry) {
+        const positions = conn.line.geometry.attributes.position;
+        if (positions) {
+          const posArray = positions.array as Float32Array;
+          
+          // Update start point
+          posArray[0] = fromNode.position.x;
+          posArray[1] = fromNode.position.y;
+          posArray[2] = fromNode.position.z;
+          
+          // Update end point
+          posArray[3] = toNode.position.x;
+          posArray[4] = toNode.position.y;
+          posArray[5] = toNode.position.z;
+          
+          positions.needsUpdate = true;
+        }
+      }
+    });
   }
 
   /**
@@ -243,6 +316,10 @@ export class VisualizationManager implements IVisualizationManager {
         Math.sin(angle) * radius
       );
 
+      // FIX #1: Store base position for oscillation animation
+      node.userData.originalY = height;
+      this.nodeBasePositions.set(thought.id, node.position.clone());
+
       // Update thought position
       thought.position = node.position.clone() as any;
     });
@@ -257,8 +334,9 @@ export class VisualizationManager implements IVisualizationManager {
 
     while (current.parent) {
       level++;
-      current = allThoughts.find(t => t.id === current.parent)!;
-      if (!current) break;
+      const parent = allThoughts.find(t => t.id === current.parent);
+      if (!parent) break;
+      current = parent;
     }
 
     return level;
@@ -288,20 +366,66 @@ export class VisualizationManager implements IVisualizationManager {
   }
 
   /**
-   * Clear all nodes and connections
+   * FIX #4: Animate node to new position with cancellation support
+   */
+  animateNodeToPosition(node: THREE.Mesh, target: THREE.Vector3, duration: number = 500): void {
+    const nodeUuid = node.uuid;
+    
+    // Cancel existing animation for this node
+    if (this.activeAnimations.has(nodeUuid)) {
+      cancelAnimationFrame(this.activeAnimations.get(nodeUuid)!);
+      this.activeAnimations.delete(nodeUuid);
+    }
+
+    const start = node.position.clone();
+    const startTime = Date.now();
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+
+      node.position.lerpVectors(start, target, eased);
+
+      if (progress < 1) {
+        const frameId = requestAnimationFrame(animate);
+        this.activeAnimations.set(nodeUuid, frameId);
+      } else {
+        this.activeAnimations.delete(nodeUuid);
+        // Update base position after animation completes
+        node.userData.originalY = target.y;
+      }
+    };
+
+    const frameId = requestAnimationFrame(animate);
+    this.activeAnimations.set(nodeUuid, frameId);
+  }
+
+  /**
+   * FIX #3: Clear all nodes and connections with proper disposal
    */
   clearScene(): void {
+    if (!this.scene) return;
+
+    // FIX #4: Cancel all active animations
+    this.activeAnimations.forEach((frameId) => {
+      cancelAnimationFrame(frameId);
+    });
+    this.activeAnimations.clear();
+
     // Remove nodes
     this.nodes.forEach(node => {
-      this.scene.remove(node);
+      this.scene!.remove(node);
     });
 
     // Remove lines
     this.lines.forEach(line => {
-      this.scene.remove(line);
+      this.scene!.remove(line);
     });
 
-    // Dispose of geometries and materials
+    // FIX #3: Proper disposal of all tracked resources
     this.disposables.forEach(disposable => {
       if (disposable && typeof disposable.dispose === 'function') {
         disposable.dispose();
@@ -310,7 +434,13 @@ export class VisualizationManager implements IVisualizationManager {
 
     this.nodes = [];
     this.lines = [];
-    this.disposables = [];
+    this.connectionData = [];
+    this.disposables.clear();
+    this.nodeBasePositions.clear();
+    
+    // Re-create central sphere and lighting after clear
+    this.setupLighting();
+    this.createCentralSphere();
   }
 
   /**
@@ -334,14 +464,14 @@ export class VisualizationManager implements IVisualizationManager {
     const animate = () => {
       this.animationId = requestAnimationFrame(animate);
       this.updateAnimation();
-      this.controls.update();
-      this.renderer.render(this.scene, this.camera);
+      this.controls?.update();
+      this.renderer?.render(this.scene!, this.camera!);
     };
     animate();
   }
 
   /**
-   * Update animation frame
+   * FIX #1 & #2: Update animation frame with proper oscillation and connection updates
    */
   private updateAnimation(): void {
     const time = Date.now() * 0.001;
@@ -352,11 +482,16 @@ export class VisualizationManager implements IVisualizationManager {
       this.centralSphere.rotation.y += 0.002;
     }
 
-    // Animate nodes with subtle movement
+    // FIX #1: Animate nodes with oscillation around base position (not accumulating)
     this.nodes.forEach((node, i) => {
-      node.position.y += Math.sin(time + i * 0.1) * 0.005;
+      const baseY = node.userData.originalY ?? node.position.y;
+      // Oscillate around base position instead of accumulating
+      node.position.y = baseY + Math.sin(time + i * 0.1) * 0.3;
       node.rotation.y += 0.005;
     });
+
+    // FIX #2: Update connection lines to follow node positions
+    this.updateConnectionPositions();
   }
 
   /**
@@ -366,6 +501,12 @@ export class VisualizationManager implements IVisualizationManager {
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);
     }
+
+    // Cancel all position animations
+    this.activeAnimations.forEach((frameId) => {
+      cancelAnimationFrame(frameId);
+    });
+    this.activeAnimations.clear();
 
     this.clearScene();
 
