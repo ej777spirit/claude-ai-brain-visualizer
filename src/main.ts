@@ -8,6 +8,7 @@ import { StateManager } from './services/state/StateManager';
 import { APIClient } from './services/api/APIClient';
 import { VisualizationManager } from './visualization/VisualizationManager';
 import { UIController } from './ui/UIController';
+import { AnalyticsController } from './ui/AnalyticsController';
 import { AccessibilityManager } from './utils/Accessibility';
 import { AppState, AIModel } from './types';
 
@@ -60,6 +61,7 @@ async function initializeApp(): Promise<void> {
     const apiClient = new APIClient('/api');
     const visualizationManager = new VisualizationManager('brain-canvas');
     const uiController = new UIController(stateManager, apiClient, visualizationManager);
+    const analyticsController = new AnalyticsController(stateManager);
     const accessibilityManager = new AccessibilityManager();
 
     // Setup accessibility
@@ -70,6 +72,7 @@ async function initializeApp(): Promise<void> {
 
     // Start application
     uiController.initialize();
+    analyticsController.initialize();
 
     console.log('✅ AI Brain Visualizer Pro - Ready');
   } catch (error) {
@@ -183,6 +186,17 @@ function createUI(): void {
             <div class="stat-value" id="activeNodes">0</div>
             <div class="stat-label">Active Nodes</div>
           </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="chart-container" style="margin-top: 1rem; background: var(--bg-dark); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
+          <div class="chart-title" style="margin-bottom: 0.5rem; color: var(--text-medium); font-size: 0.85rem;">Activation Distribution</div>
+          <canvas id="activation-chart" height="150"></canvas>
+        </div>
+
+        <div class="chart-container" style="margin-top: 1rem; background: var(--bg-dark); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
+           <div class="chart-title" style="margin-bottom: 0.5rem; color: var(--text-medium); font-size: 0.85rem;">Attention Matrix</div>
+           <div class="attention-matrix" id="attention-matrix" style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px;"></div>
         </div>
 
         <div style="margin-top: 1rem;">
