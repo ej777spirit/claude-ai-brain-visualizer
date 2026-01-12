@@ -1,19 +1,27 @@
 import { defineConfig } from 'vite';
+import { resolve } from 'node:path';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   root: '.',
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // Sourcemaps are great for debugging but add significant weight to production builds.
+    sourcemap: mode !== 'production',
     rollupOptions: {
       output: {
-        manualChunks: {
-          three: ['three'],
-          vendor: ['axios']
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          // Keep the heaviest deps split for better browser caching.
+          if (id.includes('/three/')) return 'three';
+          if (id.includes('/axios/')) return 'axios';
+          return 'vendor';
         }
       }
     }
   },
+  esbuild: mode === 'production'
+    ? { drop: ['console', 'debugger'] }
+    : undefined,
   server: {
     port: 3000,
     proxy: {
@@ -26,7 +34,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': '/src'
+      '@': resolve(__dirname, 'src')
     }
   }
-});
+}));
