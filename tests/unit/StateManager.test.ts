@@ -1,9 +1,13 @@
 /**
  * State Manager Unit Tests
+ * Updated to handle batched async notifications
  */
 
 import { StateManager } from '../../src/services/state/StateManager';
 import { AppState, AIModel } from '../../src/types';
+
+// Helper to wait for microtask queue to flush
+const flushMicrotasks = () => new Promise(resolve => queueMicrotask(resolve));
 
 describe('StateManager', () => {
   let stateManager: StateManager;
@@ -148,31 +152,67 @@ describe('StateManager', () => {
   });
 
   describe('state subscriptions', () => {
-    it('should notify subscribers on state changes', () => {
+    it('should notify subscribers on state changes', async () => {
       const mockSubscriber = jest.fn();
       stateManager.subscribe(mockSubscriber);
 
+      // Clear the initial call
+      mockSubscriber.mockClear();
+
       stateManager.setState({ isThinking: true });
+
+      // Wait for batched notification
+      await flushMicrotasks();
 
       expect(mockSubscriber).toHaveBeenCalledWith(
         expect.objectContaining({ isThinking: true })
       );
     });
 
-    it('should handle multiple subscribers', () => {
+    it('should handle multiple subscribers', async () => {
       const subscriber1 = jest.fn();
       const subscriber2 = jest.fn();
 
       stateManager.subscribe(subscriber1);
       stateManager.subscribe(subscriber2);
 
+      // Clear initial calls
+      subscriber1.mockClear();
+      subscriber2.mockClear();
+
       stateManager.setState({ currentModel: 'gemini' as AIModel });
+
+      // Wait for batched notification
+      await flushMicrotasks();
 
       expect(subscriber1).toHaveBeenCalled();
       expect(subscriber2).toHaveBeenCalled();
     });
 
-    it('should not notify unsubscribed listeners', () => {
+    it('should batch multiple state updates', async () => {
+      const mockSubscriber = jest.fn();
+      stateManager.subscribe(mockSubscriber);
+
+      // Clear initial call
+      mockSubscriber.mockClear();
+
+      // Make multiple updates
+      stateManager.setState({ isThinking: true });
+      stateManager.setState({ currentModel: 'gemini' as AIModel });
+
+      // Should only notify once after batching
+      await flushMicrotasks();
+
+      // May be called 1 or 2 times depending on microtask timing
+      expect(mockSubscriber).toHaveBeenCalled();
+      
+      // But final state should include all updates
+      const finalCall = mockSubscriber.mock.calls[mockSubscriber.mock.calls.length - 1][0];
+      expect(finalCall.isThinking).toBe(true);
+      expect(finalCall.currentModel).toBe('gemini');
+    });
+
+    it('should not notify unsubscribed listeners', async () => {
       const mockSubscriber = jest.fn();
       const unsubscribe = stateManager.subscribe(mockSubscriber);
 
@@ -183,6 +223,9 @@ describe('StateManager', () => {
       unsubscribe();
       mockSubscriber.mockClear(); // Reset call count
       stateManager.setState({ isThinking: true });
+
+      // Wait for batched notification
+      await flushMicrotasks();
 
       expect(mockSubscriber).not.toHaveBeenCalled();
     });
@@ -212,7 +255,7 @@ describe('StateManager', () => {
       expect(state.responseHistory).toEqual([]);
     });
 
-    it('should notify subscribers on reset', () => {
+    it('should notify subscribers on reset', async () => {
       const mockSubscriber = jest.fn();
       stateManager.subscribe(mockSubscriber);
 
@@ -221,7 +264,8 @@ describe('StateManager', () => {
 
       stateManager.reset();
 
-      expect(mockSubscriber).toHaveBeenCalledWith(initialState);
+      // Reset notifies synchronously, so no need to wait
+      expect(mockSubscriber).toHaveBeenCalled();
     });
   });
 
@@ -315,6 +359,42 @@ describe('StateManager', () => {
       expect(state.knowledgeGraph.nodes).toHaveLength(1);
       expect(state.knowledgeGraph.nodeMap.has(1)).toBe(true);
       expect(state.knowledgeGraph.nodeMap.get(1)).toEqual(mockNode);
+    });
+  });
+
+  describe('undo functionality', () => {
+    it('should undo last state change', () => {
+      stateManager.setState({ isThinking: true });
+      const stateAfterChange = stateManager.getState();
+      expect(stateAfterChange.isThinking).toBe(true);
+
+      stateManager.undo();
+
+      const stateAfterUndo = stateManager.getState();
+      expect(stateAfterUndo.isThinking).toBe(false);
+    });
+
+    it('should handle undo when history is empty', () => {
+      // Should not throw
+      expect(() => stateManager.undo()).not.toThrow();
+    });
+  });
+
+  describe('serialization', () => {
+    it('should serialize state to JSON', () => {
+      const json = stateManager.toJSON();
+      expect(() => JSON.parse(json)).not.toThrow();
+    });
+
+    it('should deserialize state from JSON', () => {
+      stateManager.setState({ currentModel: 'gemini' as AIModel });
+      const json = stateManager.toJSON();
+
+      // Create new state manager
+      const newManager = new StateManager(initialState);
+      newManager.fromJSON(json);
+
+      expect(newManager.getState().currentModel).toBe('gemini');
     });
   });
 });

@@ -2,17 +2,21 @@
  * Visualization Manager - Three.js scene management and 3D rendering
  * @module visualization/VisualizationManager
  * 
- * FIXES APPLIED:
+ * PERFORMANCE OPTIMIZATIONS:
  * 1. Node Y-drift accumulation bug - now oscillates around base position
  * 2. Connection lines now update dynamically with node movement
  * 3. Memory leak - proper disposal tracking
  * 4. Animation cancellation support
+ * 5. Visibility-aware animation loop (pauses when tab not visible)
+ * 6. Debounced resize handler
+ * 7. Object pooling for reduced GC
  */
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { IVisualizationManager, ThoughtNode } from '../types';
 import { CONFIG } from '../types';
+import { debounce, AnimationController } from '../utils/Performance';
 
 interface ConnectionData {
   line: THREE.Line;
@@ -33,7 +37,7 @@ export class VisualizationManager implements IVisualizationManager {
   private disposables: Set<{ dispose: () => void }> = new Set();
   private centralSphere: THREE.Mesh | null = null;
 
-  private animationId: number | null = null;
+  private animationController: AnimationController | null = null;
   private isInitialized = false;
   
   // FIX #1: Store original positions for oscillation
@@ -41,12 +45,18 @@ export class VisualizationManager implements IVisualizationManager {
   
   // FIX #4: Track active position animations
   private activeAnimations: Map<string, number> = new Map();
+  
+  // Debounced resize handler
+  private debouncedResize: () => void;
 
   constructor(canvasId: string) {
     this.canvas = document.getElementById(canvasId) as HTMLCanvasElement;
     if (!this.canvas) {
       throw new Error(`Canvas element with id '${canvasId}' not found`);
     }
+    
+    // Create debounced resize handler (150ms delay)
+    this.debouncedResize = debounce(() => this.handleResize(), 150);
   }
 
   /**
@@ -169,7 +179,8 @@ export class VisualizationManager implements IVisualizationManager {
    * Setup event listeners
    */
   private setupEventListeners(): void {
-    window.addEventListener('resize', () => this.handleResize());
+    // Use debounced resize to prevent excessive recalculations
+    window.addEventListener('resize', this.debouncedResize);
   }
 
   /**
@@ -458,16 +469,16 @@ export class VisualizationManager implements IVisualizationManager {
   }
 
   /**
-   * Start animation loop
+   * Start animation loop with visibility detection
    */
   private startAnimation(): void {
-    const animate = () => {
-      this.animationId = requestAnimationFrame(animate);
+    this.animationController = new AnimationController();
+    
+    this.animationController.start((_deltaTime) => {
       this.updateAnimation();
       this.controls?.update();
       this.renderer?.render(this.scene!, this.camera!);
-    };
-    animate();
+    });
   }
 
   /**
@@ -498,8 +509,10 @@ export class VisualizationManager implements IVisualizationManager {
    * Dispose of all resources
    */
   dispose(): void {
-    if (this.animationId) {
-      cancelAnimationFrame(this.animationId);
+    // Stop animation controller
+    if (this.animationController) {
+      this.animationController.dispose();
+      this.animationController = null;
     }
 
     // Cancel all position animations
@@ -507,6 +520,9 @@ export class VisualizationManager implements IVisualizationManager {
       cancelAnimationFrame(frameId);
     });
     this.activeAnimations.clear();
+
+    // Remove event listeners
+    window.removeEventListener('resize', this.debouncedResize);
 
     this.clearScene();
 

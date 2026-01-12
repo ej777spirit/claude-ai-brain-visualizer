@@ -1,0 +1,1567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AI Brain Visualizer Pro - Scientific AI thought process visualization tool">
+    
+    <!-- Preconnect to CDN for faster loading -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    
+    <!-- DNS prefetch for additional domains -->
+    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
+    
+    <title>AI Brain Visualizer Pro v2.0 - Scientific Research Edition</title>
+    
+    <!-- Load Chart.js asynchronously - only needed for analytics panel -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+    
+    <!-- Critical CSS inlined, rest loaded async -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --accent-cyan: #00d4ff;
+            --accent-purple: #a855f7;
+            --accent-green: #22c55e;
+            --accent-orange: #f97316;
+            --accent-red: #ef4444;
+            --text-primary: #ffffff;
+            --text-secondary: #94a3b8;
+            --border-color: #2a2a3a;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            height: 60px;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: var(--bg-tertiary);
+            border-radius: 20px;
+            font-size: 0.85rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            color: white;
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+        }
+
+        /* Main Layout */
+        .main-container {
+            display: grid;
+            grid-template-columns: 320px 1fr 380px;
+            height: calc(100vh - 60px);
+        }
+
+        /* Left Panel - Thought Chain */
+        .thought-panel {
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 16px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .thought-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .thought-item {
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 12px;
+            border-left: 3px solid var(--accent-cyan);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .thought-item:hover {
+            transform: translateX(4px);
+            border-left-color: var(--accent-purple);
+        }
+
+        .thought-item.active {
+            border-left-color: var(--accent-green);
+            background: rgba(34, 197, 94, 0.1);
+        }
+
+        .thought-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .thought-id {
+            font-size: 0.75rem;
+            color: var(--accent-cyan);
+            font-family: monospace;
+        }
+
+        .thought-time {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+
+        .thought-content {
+            font-size: 0.9rem;
+            line-height: 1.4;
+            color: var(--text-secondary);
+        }
+
+        .thought-metrics {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+            font-size: 0.75rem;
+        }
+
+        .metric {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .metric-value {
+            color: var(--accent-cyan);
+        }
+
+        /* Center Panel - 3D Visualization */
+        .visualization-panel {
+            position: relative;
+            background: var(--bg-primary);
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+        }
+
+        .view-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            background: rgba(18, 18, 26, 0.9);
+            padding: 8px 16px;
+            border-radius: 24px;
+            border: 1px solid var(--border-color);
+        }
+
+        .view-btn {
+            padding: 6px 12px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 16px;
+            transition: all 0.2s;
+            font-size: 0.85rem;
+        }
+
+        .view-btn.active {
+            background: var(--accent-cyan);
+            color: var(--bg-primary);
+        }
+
+        .heatmap-legend {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(18, 18, 26, 0.9);
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .legend-title {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .legend-gradient {
+            width: 120px;
+            height: 12px;
+            background: linear-gradient(to right, #22c55e, #eab308, #f97316, #ef4444);
+            border-radius: 6px;
+        }
+
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .node-tooltip {
+            position: absolute;
+            background: rgba(18, 18, 26, 0.95);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--accent-cyan);
+            pointer-events: none;
+            display: none;
+            z-index: 1000;
+            min-width: 200px;
+        }
+
+        .tooltip-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--accent-cyan);
+        }
+
+        .tooltip-content {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        /* Right Panel - Analytics */
+        .analytics-panel {
+            background: var(--bg-secondary);
+            border-left: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .analytics-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.85rem;
+        }
+
+        .tab-btn.active {
+            color: var(--accent-cyan);
+            border-bottom: 2px solid var(--accent-cyan);
+            background: rgba(0, 212, 255, 0.05);
+        }
+
+        .analytics-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .chart-container {
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .chart-title {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .stat-card {
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .attention-matrix {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 2px;
+            margin-top: 12px;
+        }
+
+        .attention-cell {
+            aspect-ratio: 1;
+            border-radius: 2px;
+            transition: all 0.2s;
+        }
+
+        .attention-cell:hover {
+            transform: scale(1.2);
+            z-index: 10;
+        }
+
+        .derivative-list {
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+
+        .derivative-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .derivative-label {
+            color: var(--text-secondary);
+        }
+
+        .derivative-value {
+            color: var(--accent-cyan);
+        }
+
+        .derivative-positive {
+            color: var(--accent-green);
+        }
+
+        .derivative-negative {
+            color: var(--accent-red);
+        }
+
+        /* Settings Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 24px;
+            width: 90%;
+            max-width: 500px;
+            border: 1px solid var(--border-color);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .modal-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 1.5rem;
+            line-height: 1;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .form-select, .form-input {
+            width: 100%;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .form-select:focus, .form-input:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+
+        .provider-info {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 8px;
+            padding: 12px;
+            background: var(--bg-primary);
+            border-radius: 8px;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+        }
+
+        /* Chat Input */
+        .chat-input-container {
+            padding: 16px;
+            background: var(--bg-tertiary);
+            border-top: 1px solid var(--border-color);
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 8px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+
+        .send-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+
+        .send-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .send-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: white;
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-cyan);
+        }
+
+        /* Connection Lines Canvas */
+        #connection-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>🧠 AI Brain Visualizer Pro v2.0</h1>
+        <div class="header-controls">
+            <div class="status-indicator">
+                <span class="status-dot"></span>
+                <span id="connection-status">Demo Mode</span>
+            </div>
+            <button class="btn btn-secondary" onclick="openSettings()">
+                ⚙️ Settings
+            </button>
+            <button class="btn btn-primary" onclick="toggleRecording()">
+                <span id="record-icon">▶</span>
+                <span id="record-text">Start</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <!-- Left Panel: Thought Chain -->
+        <aside class="thought-panel">
+            <div class="panel-header">
+                <span>💭 Thought Chain</span>
+                <span id="thought-count">0 thoughts</span>
+            </div>
+            <div class="thought-list" id="thought-list">
+                <!-- Thoughts will be dynamically added here -->
+            </div>
+            <div class="chat-input-container">
+                <div class="chat-input-wrapper">
+                    <input type="text" class="chat-input" id="chat-input" placeholder="Enter prompt to visualize..." />
+                    <button class="send-btn" onclick="sendMessage()">
+                        <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Center Panel: 3D Visualization -->
+        <section class="visualization-panel">
+            <div id="canvas-container"></div>
+            <canvas id="connection-canvas"></canvas>
+            
+            <div class="heatmap-legend">
+                <div class="legend-title">Activation Intensity</div>
+                <div class="legend-gradient"></div>
+                <div class="legend-labels">
+                    <span>Low</span>
+                    <span>High</span>
+                </div>
+            </div>
+
+            <div class="view-controls">
+                <button class="view-btn active" data-view="matrix" onclick="setView('matrix')">Matrix</button>
+                <button class="view-btn" data-view="tree" onclick="setView('tree')">Tree</button>
+                <button class="view-btn" data-view="force" onclick="setView('force')">Force</button>
+                <button class="view-btn" data-view="heatmap" onclick="setView('heatmap')">Heatmap</button>
+            </div>
+
+            <div class="node-tooltip" id="node-tooltip">
+                <div class="tooltip-title" id="tooltip-title">Node Info</div>
+                <div class="tooltip-content" id="tooltip-content"></div>
+            </div>
+        </section>
+
+        <!-- Right Panel: Analytics -->
+        <aside class="analytics-panel">
+            <div class="analytics-tabs">
+                <button class="tab-btn active" data-tab="overview" onclick="setTab('overview')">Overview</button>
+                <button class="tab-btn" data-tab="weights" onclick="setTab('weights')">Weights</button>
+                <button class="tab-btn" data-tab="derivatives" onclick="setTab('derivatives')">Derivatives</button>
+            </div>
+            <div class="analytics-content" id="analytics-content">
+                <!-- Content dynamically rendered -->
+            </div>
+        </aside>
+    </main>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 class="modal-title">⚙️ API Settings</h2>
+                <button class="modal-close" onclick="closeSettings()">&times;</button>
+            </div>
+            <div class="form-group">
+                <label class="form-label">AI Provider</label>
+                <select class="form-select" id="provider-select" onchange="updateProviderInfo()">
+                    <option value="demo">Demo Mode (No API Required)</option>
+                    <option value="openai">OpenAI (GPT-4)</option>
+                    <option value="anthropic">Anthropic (Claude)</option>
+                    <option value="google">Google (Gemini)</option>
+                </select>
+            </div>
+            <div class="form-group" id="api-key-group" style="display: none;">
+                <label class="form-label">API Key</label>
+                <input type="password" class="form-input" id="api-key-input" placeholder="Enter your API key..." />
+                <div class="provider-info" id="provider-info"></div>
+            </div>
+            <div class="form-group" id="model-group" style="display: none;">
+                <label class="form-label">Model</label>
+                <select class="form-select" id="model-select"></select>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeSettings()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // State Management
+        // ============================================
+        const state = {
+            thoughts: [],
+            nodes: [],
+            connections: [],
+            selectedNode: null,
+            currentView: 'matrix',
+            currentTab: 'overview',
+            isRecording: false,
+            settings: {
+                provider: 'demo',
+                apiKey: '',
+                model: ''
+            },
+            stats: {
+                totalNodes: 0,
+                activeNodes: 0,
+                avgActivation: 0,
+                peakActivation: 0,
+                thoughtsPerMinute: 0
+            }
+        };
+
+        // Provider configurations
+        const providerConfigs = {
+            openai: {
+                name: 'OpenAI',
+                models: ['gpt-4-turbo-preview', 'gpt-4', 'gpt-3.5-turbo'],
+                info: 'Get your API key from platform.openai.com/api-keys',
+                endpoint: 'https://api.openai.com/v1/chat/completions'
+            },
+            anthropic: {
+                name: 'Anthropic',
+                models: ['claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'],
+                info: 'Get your API key from console.anthropic.com',
+                endpoint: 'https://api.anthropic.com/v1/messages'
+            },
+            google: {
+                name: 'Google',
+                models: ['gemini-pro', 'gemini-pro-vision'],
+                info: 'Get your API key from makersuite.google.com/app/apikey',
+                endpoint: 'https://generativelanguage.googleapis.com/v1beta/models'
+            }
+        };
+
+        // ============================================
+        // Three.js Setup
+        // ============================================
+        let scene, camera, renderer, nodes3D = [], connections3D = [];
+        let raycaster, mouse;
+        let animationId;
+
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a0f);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
+            camera.position.set(0, 0, 50);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            // Raycaster for interaction
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            // Add ambient light
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+            scene.add(ambientLight);
+
+            // Add point light
+            const pointLight = new THREE.PointLight(0x00d4ff, 1, 100);
+            pointLight.position.set(0, 0, 30);
+            scene.add(pointLight);
+
+            // Create initial nodes
+            createNodes(64);
+
+            // Event listeners
+            renderer.domElement.addEventListener('mousemove', onMouseMove);
+            renderer.domElement.addEventListener('click', onMouseClick);
+            window.addEventListener('resize', onWindowResize);
+
+            // Start animation
+            animate();
+        }
+
+        function createNodes(count) {
+            // Clear existing
+            nodes3D.forEach(node => scene.remove(node));
+            connections3D.forEach(conn => scene.remove(conn));
+            nodes3D = [];
+            connections3D = [];
+            state.nodes = [];
+
+            const gridSize = Math.ceil(Math.sqrt(count));
+            const spacing = 5;
+            const offset = (gridSize * spacing) / 2;
+
+            for (let i = 0; i < count; i++) {
+                const row = Math.floor(i / gridSize);
+                const col = i % gridSize;
+
+                // Create node data
+                const nodeData = {
+                    id: i,
+                    x: col * spacing - offset,
+                    y: row * spacing - offset,
+                    z: (Math.random() - 0.5) * 10,
+                    activation: Math.random(),
+                    weight: Math.random() * 2 - 1,
+                    bias: Math.random() * 0.5 - 0.25,
+                    layer: Math.floor(i / (count / 4)),
+                    thought: null
+                };
+                state.nodes.push(nodeData);
+
+                // Create 3D sphere
+                const geometry = new THREE.SphereGeometry(0.5, 16, 16);
+                const material = new THREE.MeshPhongMaterial({
+                    color: getActivationColor(nodeData.activation),
+                    emissive: getActivationColor(nodeData.activation),
+                    emissiveIntensity: 0.3,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const sphere = new THREE.Mesh(geometry, material);
+                sphere.position.set(nodeData.x, nodeData.y, nodeData.z);
+                sphere.userData = nodeData;
+                scene.add(sphere);
+                nodes3D.push(sphere);
+            }
+
+            // Create connections
+            createConnections();
+            updateStats();
+        }
+
+        function createConnections() {
+            // Clear existing connections
+            connections3D.forEach(conn => scene.remove(conn));
+            connections3D = [];
+
+            // Create connections between layers
+            for (let i = 0; i < state.nodes.length; i++) {
+                const node = state.nodes[i];
+                // Connect to 2-3 random nodes in the next layer
+                const connectCount = Math.floor(Math.random() * 2) + 2;
+                for (let j = 0; j < connectCount; j++) {
+                    const targetIdx = Math.min(i + Math.floor(Math.random() * 8) + 1, state.nodes.length - 1);
+                    if (targetIdx !== i) {
+                        const targetNode = state.nodes[targetIdx];
+                        const points = [
+                            new THREE.Vector3(node.x, node.y, node.z),
+                            new THREE.Vector3(targetNode.x, targetNode.y, targetNode.z)
+                        ];
+                        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                        const material = new THREE.LineBasicMaterial({
+                            color: 0x00d4ff,
+                            transparent: true,
+                            opacity: 0.2
+                        });
+                        const line = new THREE.Line(geometry, material);
+                        scene.add(line);
+                        connections3D.push(line);
+
+                        state.connections.push({
+                            from: i,
+                            to: targetIdx,
+                            weight: Math.random() * 2 - 1
+                        });
+                    }
+                }
+            }
+        }
+
+        function getActivationColor(activation) {
+            // Green -> Yellow -> Orange -> Red gradient
+            if (activation < 0.25) {
+                return new THREE.Color(0x22c55e);
+            } else if (activation < 0.5) {
+                return new THREE.Color(0xeab308);
+            } else if (activation < 0.75) {
+                return new THREE.Color(0xf97316);
+            } else {
+                return new THREE.Color(0xef4444);
+            }
+        }
+
+        function animate() {
+            animationId = requestAnimationFrame(animate);
+
+            // Rotate scene slowly
+            scene.rotation.y += 0.001;
+
+            // Update node activations if recording
+            if (state.isRecording) {
+                nodes3D.forEach((node, idx) => {
+                    const nodeData = state.nodes[idx];
+                    // Simulate activation changes
+                    nodeData.activation += (Math.random() - 0.5) * 0.1;
+                    nodeData.activation = Math.max(0, Math.min(1, nodeData.activation));
+                    
+                    const color = getActivationColor(nodeData.activation);
+                    node.material.color = color;
+                    node.material.emissive = color;
+                    
+                    // Pulse effect for active nodes
+                    if (nodeData.activation > 0.7) {
+                        const scale = 1 + Math.sin(Date.now() * 0.01) * 0.1;
+                        node.scale.set(scale, scale, scale);
+                    }
+                });
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function onMouseMove(event) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(nodes3D);
+
+            const tooltip = document.getElementById('node-tooltip');
+            
+            if (intersects.length > 0) {
+                const node = intersects[0].object;
+                const data = node.userData;
+                
+                document.getElementById('tooltip-title').textContent = `Node ${data.id} (Layer ${data.layer})`;
+                document.getElementById('tooltip-content').innerHTML = `
+                    <div>Activation: ${(data.activation * 100).toFixed(1)}%</div>
+                    <div>Weight: ${data.weight.toFixed(4)}</div>
+                    <div>Bias: ${data.bias.toFixed(4)}</div>
+                    ${data.thought ? `<div>Thought: "${data.thought.substring(0, 50)}..."</div>` : ''}
+                `;
+                
+                tooltip.style.display = 'block';
+                tooltip.style.left = event.clientX + 10 + 'px';
+                tooltip.style.top = event.clientY + 10 + 'px';
+                
+                // Highlight node
+                node.material.emissiveIntensity = 0.8;
+            } else {
+                tooltip.style.display = 'none';
+                nodes3D.forEach(n => n.material.emissiveIntensity = 0.3);
+            }
+        }
+
+        function onMouseClick(event) {
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(nodes3D);
+
+            if (intersects.length > 0) {
+                const node = intersects[0].object;
+                const data = node.userData;
+                state.selectedNode = data;
+                
+                // Add thought to this node
+                if (state.thoughts.length > 0) {
+                    const latestThought = state.thoughts[state.thoughts.length - 1];
+                    data.thought = latestThought.content;
+                }
+                
+                updateAnalytics();
+            }
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        }
+
+        // ============================================
+        // View Management
+        // ============================================
+        function setView(view) {
+            state.currentView = view;
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.view === view);
+            });
+
+            // Rearrange nodes based on view
+            const count = state.nodes.length;
+            const gridSize = Math.ceil(Math.sqrt(count));
+            const spacing = 5;
+            const offset = (gridSize * spacing) / 2;
+
+            state.nodes.forEach((node, i) => {
+                let targetPos;
+                
+                switch (view) {
+                    case 'matrix':
+                        const row = Math.floor(i / gridSize);
+                        const col = i % gridSize;
+                        targetPos = {
+                            x: col * spacing - offset,
+                            y: row * spacing - offset,
+                            z: (Math.random() - 0.5) * 5
+                        };
+                        break;
+                    case 'tree':
+                        const layer = node.layer;
+                        const nodesInLayer = count / 4;
+                        const posInLayer = i % nodesInLayer;
+                        targetPos = {
+                            x: (posInLayer - nodesInLayer / 2) * 3,
+                            y: layer * 10 - 15,
+                            z: 0
+                        };
+                        break;
+                    case 'force':
+                        const angle = (i / count) * Math.PI * 2;
+                        const radius = 15 + (node.layer * 5);
+                        targetPos = {
+                            x: Math.cos(angle) * radius,
+                            y: Math.sin(angle) * radius,
+                            z: (Math.random() - 0.5) * 10
+                        };
+                        break;
+                    case 'heatmap':
+                        const hRow = Math.floor(i / gridSize);
+                        const hCol = i % gridSize;
+                        targetPos = {
+                            x: hCol * spacing - offset,
+                            y: hRow * spacing - offset,
+                            z: node.activation * 10
+                        };
+                        break;
+                }
+
+                // Animate to new position
+                animateNodePosition(nodes3D[i], targetPos);
+            });
+        }
+
+        function animateNodePosition(node, target) {
+            const start = { x: node.position.x, y: node.position.y, z: node.position.z };
+            const duration = 500;
+            const startTime = Date.now();
+
+            function update() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const eased = 1 - Math.pow(1 - progress, 3);
+
+                node.position.x = start.x + (target.x - start.x) * eased;
+                node.position.y = start.y + (target.y - start.y) * eased;
+                node.position.z = start.z + (target.z - start.z) * eased;
+
+                if (progress < 1) {
+                    requestAnimationFrame(update);
+                }
+            }
+            update();
+        }
+
+        // ============================================
+        // Analytics Tab Management
+        // ============================================
+        function setTab(tab) {
+            state.currentTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === tab);
+            });
+            updateAnalytics();
+        }
+
+        function updateAnalytics() {
+            const content = document.getElementById('analytics-content');
+            
+            switch (state.currentTab) {
+                case 'overview':
+                    content.innerHTML = renderOverview();
+                    renderCharts();
+                    break;
+                case 'weights':
+                    content.innerHTML = renderWeights();
+                    break;
+                case 'derivatives':
+                    content.innerHTML = renderDerivatives();
+                    break;
+            }
+        }
+
+        function renderOverview() {
+            return `
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">${state.stats.totalNodes}</div>
+                        <div class="stat-label">Total Nodes</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${state.stats.activeNodes}</div>
+                        <div class="stat-label">Active Nodes</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${(state.stats.avgActivation * 100).toFixed(1)}%</div>
+                        <div class="stat-label">Avg Activation</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${state.thoughts.length}</div>
+                        <div class="stat-label">Thoughts</div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-title">Activation Distribution</div>
+                    <canvas id="activation-chart" height="150"></canvas>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-title">Attention Matrix (8×8)</div>
+                    <div class="attention-matrix" id="attention-matrix"></div>
+                </div>
+            `;
+        }
+
+        function renderWeights() {
+            const selectedNode = state.selectedNode || state.nodes[0];
+            return `
+                <div class="chart-container">
+                    <div class="chart-title">Selected Node: ${selectedNode ? selectedNode.id : 'None'}</div>
+                    <div class="derivative-list">
+                        <div class="derivative-item">
+                            <span class="derivative-label">Activation</span>
+                            <span class="derivative-value">${selectedNode ? (selectedNode.activation * 100).toFixed(2) + '%' : '-'}</span>
+                        </div>
+                        <div class="derivative-item">
+                            <span class="derivative-label">Weight</span>
+                            <span class="derivative-value">${selectedNode ? selectedNode.weight.toFixed(6) : '-'}</span>
+                        </div>
+                        <div class="derivative-item">
+                            <span class="derivative-label">Bias</span>
+                            <span class="derivative-value">${selectedNode ? selectedNode.bias.toFixed(6) : '-'}</span>
+                        </div>
+                        <div class="derivative-item">
+                            <span class="derivative-label">Layer</span>
+                            <span class="derivative-value">${selectedNode ? selectedNode.layer : '-'}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-title">Weight Distribution</div>
+                    <canvas id="weight-chart" height="150"></canvas>
+                </div>
+            `;
+        }
+
+        function renderDerivatives() {
+            return `
+                <div class="chart-container">
+                    <div class="chart-title">Mathematical Derivatives</div>
+                    <div class="derivative-list">
+                        <div class="derivative-item">
+                            <span class="derivative-label">∂Loss/∂w</span>
+                            <span class="derivative-value ${Math.random() > 0.5 ? 'derivative-positive' : 'derivative-negative'}">
+                                ${(Math.random() * 0.01).toFixed(6)}
+                            </span>
+                        </div>
+                        <div class="derivative-item">
+                            <span class="derivative-label">∂Loss/∂b</span>
+                            <span class="derivative-value ${Math.random() > 0.5 ? 'derivative-positive' : 'derivative-negative'}">
+                                ${(Math.random() * 0.01).toFixed(6)}
+                            </span>
+                        </div>
+                        <div class="derivative-item">
+                            <span class="derivative-label">∂a/∂z (sigmoid)</span>
+                            <span class="derivative-value">${(Math.random() * 0.25).toFixed(6)}</span>
+                        </div>
+                        <div class="derivative-item">
+                            <span class="derivative-label">Learning Rate</span>
+                            <span class="derivative-value">0.001</span>
+                        </div>
+                        <div class="derivative-item">
+                            <span class="derivative-label">Momentum</span>
+                            <span class="derivative-value">0.9</span>
+                        </div>
+                        <div class="derivative-item">
+                            <span class="derivative-label">Gradient Norm</span>
+                            <span class="derivative-value">${(Math.random() * 2).toFixed(6)}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-title">Gradient Flow</div>
+                    <canvas id="gradient-chart" height="150"></canvas>
+                </div>
+            `;
+        }
+
+        function renderCharts() {
+            // Activation distribution chart
+            const activationCtx = document.getElementById('activation-chart');
+            if (activationCtx) {
+                const bins = [0, 0, 0, 0, 0];
+                state.nodes.forEach(node => {
+                    const bin = Math.min(Math.floor(node.activation * 5), 4);
+                    bins[bin]++;
+                });
+
+                new Chart(activationCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['0-20%', '20-40%', '40-60%', '60-80%', '80-100%'],
+                        datasets: [{
+                            data: bins,
+                            backgroundColor: ['#22c55e', '#84cc16', '#eab308', '#f97316', '#ef4444']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { grid: { color: '#2a2a3a' }, ticks: { color: '#94a3b8' } },
+                            x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+                        }
+                    }
+                });
+            }
+
+            // Attention matrix
+            const matrixContainer = document.getElementById('attention-matrix');
+            if (matrixContainer) {
+                matrixContainer.innerHTML = '';
+                for (let i = 0; i < 64; i++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'attention-cell';
+                    const value = Math.random();
+                    cell.style.backgroundColor = `rgba(0, 212, 255, ${value})`;
+                    matrixContainer.appendChild(cell);
+                }
+            }
+        }
+
+        function updateStats() {
+            state.stats.totalNodes = state.nodes.length;
+            state.stats.activeNodes = state.nodes.filter(n => n.activation > 0.5).length;
+            state.stats.avgActivation = state.nodes.reduce((sum, n) => sum + n.activation, 0) / state.nodes.length;
+            state.stats.peakActivation = Math.max(...state.nodes.map(n => n.activation));
+            updateAnalytics();
+        }
+
+        // ============================================
+        // Thought Management
+        // ============================================
+        function addThought(content, isUser = true) {
+            const thought = {
+                id: Date.now(),
+                content: content,
+                timestamp: new Date(),
+                isUser: isUser,
+                activation: Math.random(),
+                confidence: Math.random()
+            };
+            state.thoughts.push(thought);
+            
+            // Assign to random high-activation node
+            const highNodes = state.nodes.filter(n => n.activation > 0.6);
+            if (highNodes.length > 0) {
+                const targetNode = highNodes[Math.floor(Math.random() * highNodes.length)];
+                targetNode.thought = content;
+            }
+            
+            renderThoughts();
+            document.getElementById('thought-count').textContent = `${state.thoughts.length} thoughts`;
+        }
+
+        function renderThoughts() {
+            const container = document.getElementById('thought-list');
+            container.innerHTML = state.thoughts.map((thought, idx) => `
+                <div class="thought-item ${idx === state.thoughts.length - 1 ? 'active' : ''}" onclick="selectThought(${thought.id})">
+                    <div class="thought-header">
+                        <span class="thought-id">${thought.isUser ? '👤' : '🤖'} #${thought.id}</span>
+                        <span class="thought-time">${thought.timestamp.toLocaleTimeString()}</span>
+                    </div>
+                    <div class="thought-content">${thought.content}</div>
+                    <div class="thought-metrics">
+                        <div class="metric">
+                            <span>⚡</span>
+                            <span class="metric-value">${(thought.activation * 100).toFixed(0)}%</span>
+                        </div>
+                        <div class="metric">
+                            <span>🎯</span>
+                            <span class="metric-value">${(thought.confidence * 100).toFixed(0)}%</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            // Scroll to bottom
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function selectThought(id) {
+            const thought = state.thoughts.find(t => t.id === id);
+            if (thought) {
+                // Highlight connected nodes
+                state.nodes.forEach((node, idx) => {
+                    if (node.thought === thought.content) {
+                        nodes3D[idx].material.emissiveIntensity = 1;
+                        setTimeout(() => {
+                            nodes3D[idx].material.emissiveIntensity = 0.3;
+                        }, 2000);
+                    }
+                });
+            }
+        }
+
+        // ============================================
+        // API Integration
+        // ============================================
+        async function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            if (!message) return;
+
+            input.value = '';
+            addThought(message, true);
+
+            // Simulate neural activity
+            simulateNeuralActivity();
+
+            if (state.settings.provider === 'demo') {
+                // Demo mode - generate simulated response
+                setTimeout(() => {
+                    const responses = [
+                        "Processing your query through multiple attention heads...",
+                        "Analyzing semantic patterns in the input space...",
+                        "Computing contextual embeddings across transformer layers...",
+                        "Generating response based on learned representations..."
+                    ];
+                    addThought(responses[Math.floor(Math.random() * responses.length)], false);
+                }, 1000);
+            } else {
+                // Real API call
+                try {
+                    const response = await callAPI(message);
+                    addThought(response, false);
+                } catch (error) {
+                    addThought(`Error: ${error.message}`, false);
+                }
+            }
+        }
+
+        async function callAPI(message) {
+            const { provider, apiKey, model } = state.settings;
+            
+            if (provider === 'openai') {
+                const response = await fetch(providerConfigs.openai.endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: model || 'gpt-4',
+                        messages: [{ role: 'user', content: message }],
+                        max_tokens: 500
+                    })
+                });
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+                return data.choices[0].message.content;
+            }
+            
+            if (provider === 'anthropic') {
+                const response = await fetch(providerConfigs.anthropic.endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': apiKey,
+                        'anthropic-version': '2023-06-01'
+                    },
+                    body: JSON.stringify({
+                        model: model || 'claude-3-sonnet-20240229',
+                        messages: [{ role: 'user', content: message }],
+                        max_tokens: 500
+                    })
+                });
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+                return data.content[0].text;
+            }
+            
+            if (provider === 'google') {
+                const url = `${providerConfigs.google.endpoint}/${model || 'gemini-pro'}:generateContent?key=${apiKey}`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: message }] }]
+                    })
+                });
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+                return data.candidates[0].content.parts[0].text;
+            }
+            
+            throw new Error('Unknown provider');
+        }
+
+        function simulateNeuralActivity() {
+            // Trigger wave of activations
+            const centerNode = Math.floor(state.nodes.length / 2);
+            
+            state.nodes.forEach((node, idx) => {
+                const distance = Math.abs(idx - centerNode);
+                setTimeout(() => {
+                    node.activation = Math.min(1, node.activation + 0.3);
+                    const color = getActivationColor(node.activation);
+                    nodes3D[idx].material.color = color;
+                    nodes3D[idx].material.emissive = color;
+                }, distance * 20);
+            });
+
+            // Decay after wave
+            setTimeout(() => {
+                state.nodes.forEach((node, idx) => {
+                    node.activation = Math.max(0.1, node.activation - 0.2);
+                    const color = getActivationColor(node.activation);
+                    nodes3D[idx].material.color = color;
+                    nodes3D[idx].material.emissive = color;
+                });
+                updateStats();
+            }, 1500);
+        }
+
+        // ============================================
+        // Settings Modal
+        // ============================================
+        function openSettings() {
+            document.getElementById('settings-modal').classList.add('active');
+            document.getElementById('provider-select').value = state.settings.provider;
+            document.getElementById('api-key-input').value = state.settings.apiKey;
+            updateProviderInfo();
+        }
+
+        function closeSettings() {
+            document.getElementById('settings-modal').classList.remove('active');
+        }
+
+        function updateProviderInfo() {
+            const provider = document.getElementById('provider-select').value;
+            const apiKeyGroup = document.getElementById('api-key-group');
+            const modelGroup = document.getElementById('model-group');
+            const providerInfo = document.getElementById('provider-info');
+            const modelSelect = document.getElementById('model-select');
+
+            if (provider === 'demo') {
+                apiKeyGroup.style.display = 'none';
+                modelGroup.style.display = 'none';
+            } else {
+                apiKeyGroup.style.display = 'block';
+                modelGroup.style.display = 'block';
+                
+                const config = providerConfigs[provider];
+                providerInfo.textContent = config.info;
+                
+                modelSelect.innerHTML = config.models.map(m => 
+                    `<option value="${m}">${m}</option>`
+                ).join('');
+            }
+        }
+
+        function saveSettings() {
+            state.settings.provider = document.getElementById('provider-select').value;
+            state.settings.apiKey = document.getElementById('api-key-input').value;
+            state.settings.model = document.getElementById('model-select').value;
+
+            // Save to localStorage
+            localStorage.setItem('ai-visualizer-settings', JSON.stringify(state.settings));
+
+            // Update status indicator
+            const status = document.getElementById('connection-status');
+            if (state.settings.provider === 'demo') {
+                status.textContent = 'Demo Mode';
+            } else {
+                status.textContent = `${providerConfigs[state.settings.provider].name} Connected`;
+            }
+
+            closeSettings();
+        }
+
+        function loadSettings() {
+            const saved = localStorage.getItem('ai-visualizer-settings');
+            if (saved) {
+                try {
+                    state.settings = JSON.parse(saved);
+                    const status = document.getElementById('connection-status');
+                    if (state.settings.provider !== 'demo') {
+                        status.textContent = `${providerConfigs[state.settings.provider].name} Connected`;
+                    }
+                } catch (e) {
+                    console.error('Failed to load settings:', e);
+                }
+            }
+        }
+
+        // ============================================
+        // Recording Control
+        // ============================================
+        function toggleRecording() {
+            state.isRecording = !state.isRecording;
+            document.getElementById('record-icon').textContent = state.isRecording ? '⏸' : '▶';
+            document.getElementById('record-text').textContent = state.isRecording ? 'Pause' : 'Start';
+        }
+
+        // ============================================
+        // Keyboard Shortcuts
+        // ============================================
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && document.activeElement.id === 'chat-input') {
+                sendMessage();
+            }
+            if (e.key === 'Escape') {
+                closeSettings();
+            }
+        });
+
+        // ============================================
+        // Initialize
+        // ============================================
+        window.addEventListener('load', () => {
+            initThreeJS();
+            loadSettings();
+            updateAnalytics();
+            
+            // Add initial demo thought
+            addThought("Welcome to AI Brain Visualizer Pro v2.0! Enter a prompt to see neural activations.", false);
+        });
+    </script>
+</body>
+</html>

@@ -210,13 +210,17 @@ describe('UIController Integration', () => {
       expect(statusText.textContent).toBe('Ready to analyze');
     });
 
-    it('should show loading overlay', () => {
+    it('should show loading overlay', async () => {
       const loadingOverlay = document.getElementById('loadingOverlay')!;
+      const statusDot = document.getElementById('statusDot')!;
 
       expect(loadingOverlay.classList.contains('active')).toBe(false);
 
       // Trigger thinking state
       stateManager.dispatch({ type: 'THINKING_STARTED' });
+
+      // Wait for batched notification to complete
+      await new Promise(resolve => queueMicrotask(resolve));
 
       // Status should update through state subscription
       expect(statusDot.classList.contains('thinking')).toBe(true);

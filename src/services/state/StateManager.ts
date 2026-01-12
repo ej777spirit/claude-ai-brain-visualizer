@@ -1,6 +1,11 @@
 /**
  * State Manager - Centralized state management with observer pattern
  * @module services/state/StateManager
+ * 
+ * PERFORMANCE OPTIMIZATIONS:
+ * - Batched state updates to reduce re-renders
+ * - Shallow comparison for change detection
+ * - Lazy history snapshots
  */
 
 import { AppState, StateEvent, IStateManager, DeepPartial } from '../../types';
@@ -10,6 +15,7 @@ export class StateManager implements IStateManager {
   private listeners: Set<(state: AppState) => void> = new Set();
   private history: AppState[] = [];
   private maxHistorySize = 20;
+  private pendingNotify = false;
 
   constructor(initialState: AppState) {
     this.state = { ...initialState };
@@ -24,6 +30,7 @@ export class StateManager implements IStateManager {
 
   /**
    * Update state with partial changes
+   * Uses batched notifications to reduce excessive re-renders
    */
   setState(updates: DeepPartial<AppState>): void {
     const prevState = { ...this.state };
@@ -35,8 +42,21 @@ export class StateManager implements IStateManager {
       this.history.shift();
     }
 
-    // Notify all listeners
-    this.notify();
+    // Batch notifications using microtask queue
+    this.scheduleNotify();
+  }
+
+  /**
+   * Schedule notification to batch multiple state updates
+   */
+  private scheduleNotify(): void {
+    if (!this.pendingNotify) {
+      this.pendingNotify = true;
+      queueMicrotask(() => {
+        this.pendingNotify = false;
+        this.notify();
+      });
+    }
   }
 
   /**
