@@ -2,18 +2,17 @@
  * Visualization Manager - Three.js scene management and 3D rendering
  * @module visualization/VisualizationManager
  * 
- * PERFORMANCE OPTIMIZATIONS:
- * 1. Node Y-drift accumulation bug - now oscillates around base position
- * 2. Connection lines now update dynamically with node movement
- * 3. Memory leak - proper disposal tracking
- * 4. Animation cancellation support
- * 5. Visibility-aware animation loop (pauses when tab not visible)
- * 6. Debounced resize handler
- * 7. Object pooling for reduced GC
+ * FEATURES:
+ * 1. True chain-of-thought visualization with sequential node revelation
+ * 2. Text labels on nodes showing thought content
+ * 3. Linear chain structure with animated connections
+ * 4. Incremental node addition for streaming support
+ * 5. Visibility-aware animation loop
  */
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer';
 import { IVisualizationManager, ThoughtNode } from '../types';
 import { CONFIG } from '../types';
 import { debounce, AnimationController } from '../utils/Performance';
@@ -24,14 +23,22 @@ interface ConnectionData {
   toNodeId: number;
 }
 
+interface NodeData {
+  mesh: THREE.Mesh;
+  label: CSS2DObject;
+  thought: ThoughtNode;
+}
+
 export class VisualizationManager implements IVisualizationManager {
   private canvas: HTMLCanvasElement;
   private scene: THREE.Scene | null = null;
   private camera: THREE.PerspectiveCamera | null = null;
   private renderer: THREE.WebGLRenderer | null = null;
+  private labelRenderer: CSS2DRenderer | null = null;
   private controls: OrbitControls | null = null;
 
   private nodes: THREE.Mesh[] = [];
+  private nodeDataMap: Map<number, NodeData> = new Map();
   private lines: THREE.Line[] = [];
   private connectionData: ConnectionData[] = [];
   private disposables: Set<{ dispose: () => void }> = new Set();
@@ -40,12 +47,14 @@ export class VisualizationManager implements IVisualizationManager {
   private animationController: AnimationController | null = null;
   private isInitialized = false;
   
-  // FIX #1: Store original positions for oscillation
-  private nodeBasePositions: Map<number, THREE.Vector3> = new Map();
+  // Chain of thought state
+  private chainPosition = 0;
+  private readonly CHAIN_SPACING = 8;
+  private readonly CHAIN_CURVE_AMPLITUDE = 3;
   
-  // FIX #4: Track active position animations
+  // Track active position animations
   private activeAnimations: Map<string, number> = new Map();
-  
+
   // Debounced resize handler
   private debouncedResize: () => void;
 
@@ -68,6 +77,7 @@ export class VisualizationManager implements IVisualizationManager {
     this.setupScene();
     this.setupCamera();
     this.setupRenderer();
+    this.setupLabelRenderer();
     this.setupControls();
     this.setupLighting();
     this.createCentralSphere();
@@ -83,7 +93,7 @@ export class VisualizationManager implements IVisualizationManager {
   private setupScene(): void {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0a192f);
-    this.scene.fog = new THREE.Fog(0x0a192f, 50, 200);
+    this.scene.fog = new THREE.Fog(0x0a192f, 80, 250);
   }
 
   /**
@@ -91,8 +101,9 @@ export class VisualizationManager implements IVisualizationManager {
    */
   private setupCamera(): void {
     const aspect = this.canvas.clientWidth / this.canvas.clientHeight;
-    this.camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
-    this.camera.position.set(0, 0, CONFIG.VISUALIZATION.cameraDistance);
+    this.camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 1000);
+    this.camera.position.set(0, 15, 50);
+    this.camera.lookAt(0, 0, 0);
   }
 
   /**
@@ -111,6 +122,21 @@ export class VisualizationManager implements IVisualizationManager {
   }
 
   /**
+   * Setup CSS2D renderer for text labels
+   */
+  private setupLabelRenderer(): void {
+    this.labelRenderer = new CSS2DRenderer();
+    this.labelRenderer.setSize(this.canvas.clientWidth, this.canvas.clientHeight);
+    this.labelRenderer.domElement.style.position = 'absolute';
+    this.labelRenderer.domElement.style.top = '0';
+    this.labelRenderer.domElement.style.left = '0';
+    this.labelRenderer.domElement.style.pointerEvents = 'none';
+    
+    // Insert label renderer after canvas
+    this.canvas.parentElement?.appendChild(this.labelRenderer.domElement);
+  }
+
+  /**
    * Setup orbit controls
    */
   private setupControls(): void {
@@ -119,8 +145,8 @@ export class VisualizationManager implements IVisualizationManager {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
-    this.controls.maxDistance = 100;
-    this.controls.minDistance = 10;
+    this.controls.maxDistance = 150;
+    this.controls.minDistance = 20;
     this.controls.enablePan = true;
     this.controls.enableZoom = true;
     this.controls.enableRotate = true;
@@ -133,43 +159,63 @@ export class VisualizationManager implements IVisualizationManager {
     if (!this.scene) return;
 
     // Ambient light
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
     this.scene.add(ambientLight);
     this.disposables.add(ambientLight);
 
     // Directional light
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
-    directionalLight.position.set(10, 10, 10);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(20, 30, 20);
     directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
     this.scene.add(directionalLight);
     this.disposables.add(directionalLight);
 
-    // Point light for accent
-    const pointLight = new THREE.PointLight(CONFIG.THOUGHT_CATEGORIES.analysis.color, 0.5, 100);
-    pointLight.position.set(0, 20, 0);
+    // Point light following chain
+    const pointLight = new THREE.PointLight(0x64ffda, 0.6, 100);
+    pointLight.position.set(0, 10, 0);
     this.scene.add(pointLight);
     this.disposables.add(pointLight);
   }
 
   /**
-   * Create central sphere
+   * Create central "brain" sphere as starting point
    */
   private createCentralSphere(): void {
     if (!this.scene) return;
 
-    const geometry = new THREE.SphereGeometry(2, 32, 32);
+    const geometry = new THREE.SphereGeometry(2.5, 32, 32);
     const material = new THREE.MeshPhysicalMaterial({
-      color: CONFIG.THOUGHT_CATEGORIES.analysis.color,
-      metalness: 0.7,
-      roughness: 0.2,
-      opacity: 0.3,
-      transparent: true
+      color: 0x64ffda,
+      metalness: 0.3,
+      roughness: 0.4,
+      opacity: 0.6,
+      transparent: true,
+      emissive: 0x64ffda,
+      emissiveIntensity: 0.2
     });
 
     this.centralSphere = new THREE.Mesh(geometry, material);
+    this.centralSphere.position.set(0, 0, 0);
     this.scene.add(this.centralSphere);
+
+    // Add "Start" label
+    const labelDiv = document.createElement('div');
+    labelDiv.className = 'thought-label thought-label-start';
+    labelDiv.textContent = '🧠 Input';
+    labelDiv.style.cssText = `
+      color: #64ffda;
+      font-size: 14px;
+      font-weight: bold;
+      background: rgba(10, 25, 47, 0.9);
+      padding: 4px 12px;
+      border-radius: 12px;
+      border: 1px solid #64ffda;
+      white-space: nowrap;
+    `;
+    
+    const label = new CSS2DObject(labelDiv);
+    label.position.set(0, 4, 0);
+    this.centralSphere.add(label);
 
     this.disposables.add(geometry);
     this.disposables.add(material);
@@ -179,255 +225,325 @@ export class VisualizationManager implements IVisualizationManager {
    * Setup event listeners
    */
   private setupEventListeners(): void {
-    // Use debounced resize to prevent excessive recalculations
     window.addEventListener('resize', this.debouncedResize);
   }
 
   /**
-   * Create visualization from thought nodes
+   * Create full visualization from thought nodes (batch mode)
    */
   createVisualization(thoughts: ThoughtNode[]): void {
     this.clearScene();
+    this.chainPosition = 0;
 
-    // Create node map for connections
-    const nodeMap = new Map<number, THREE.Mesh>();
-
-    // Create nodes
-    thoughts.forEach(thought => {
-      const node = this.createNode(thought);
-      nodeMap.set(thought.id, node);
-      this.nodes.push(node);
-    });
-
-    // Position nodes in 3D space first
-    this.positionNodes(thoughts, nodeMap);
-
-    // Create connections after positioning
-    thoughts.forEach(thought => {
-      if (thought.parent && nodeMap.has(thought.parent)) {
-        const parentNode = nodeMap.get(thought.parent)!;
-        const childNode = nodeMap.get(thought.id)!;
-        this.createConnection(parentNode, childNode, thought.parent, thought.id);
-      }
+    // Add thoughts sequentially with delay for animation effect
+    thoughts.forEach((thought, index) => {
+      setTimeout(() => {
+        this.addThoughtToChain(thought);
+      }, index * 300); // 300ms delay between each thought
     });
   }
 
   /**
-   * Create a thought node
+   * Add a single thought to the chain (for streaming/incremental updates)
    */
-  private createNode(thought: ThoughtNode): THREE.Mesh {
+  addThoughtToChain(thought: ThoughtNode): void {
+    if (!this.scene) return;
+
+    this.chainPosition++;
+    
+    // Calculate position along a gentle curve
+    const position = this.calculateChainPosition(this.chainPosition);
+    
+    // Create the thought node
+    const nodeData = this.createThoughtNode(thought, position);
+    this.nodeDataMap.set(thought.id, nodeData);
+    this.nodes.push(nodeData.mesh);
+
+    // Connect to previous node
+    if (this.chainPosition > 1) {
+      const prevThought = this.nodes[this.nodes.length - 2];
+      if (prevThought) {
+        this.createAnimatedConnection(prevThought, nodeData.mesh);
+      }
+    } else {
+      // First thought - connect to central sphere
+      if (this.centralSphere) {
+        this.createAnimatedConnection(this.centralSphere, nodeData.mesh);
+      }
+    }
+
+    // Animate node appearance
+    this.animateNodeAppearance(nodeData.mesh);
+
+    // Update camera to follow chain
+    this.updateCameraToFollowChain(position);
+  }
+
+  /**
+   * Calculate position along a curved chain path
+   */
+  private calculateChainPosition(index: number): THREE.Vector3 {
+    // Create a gentle S-curve path
+    const x = index * this.CHAIN_SPACING;
+    const y = Math.sin(index * 0.5) * this.CHAIN_CURVE_AMPLITUDE;
+    const z = Math.cos(index * 0.3) * this.CHAIN_CURVE_AMPLITUDE * 0.5;
+    
+    return new THREE.Vector3(x, y, z);
+  }
+
+  /**
+   * Create a thought node with label
+   */
+  private createThoughtNode(thought: ThoughtNode, position: THREE.Vector3): NodeData {
     if (!this.scene) throw new Error('Scene not initialized');
 
-    const geometry = new THREE.SphereGeometry(1, 16, 16);
+    // Create sphere geometry
+    const geometry = new THREE.SphereGeometry(1.2, 24, 24);
+    const color = CONFIG.THOUGHT_CATEGORIES[thought.category].color;
     const material = new THREE.MeshPhongMaterial({
-      color: CONFIG.THOUGHT_CATEGORIES[thought.category].color,
-      opacity: 0.8,
-      transparent: true
+      color: color,
+      opacity: 0.9,
+      transparent: true,
+      emissive: color,
+      emissiveIntensity: 0.15
     });
 
-    const node = new THREE.Mesh(geometry, material);
-    node.userData = { ...thought, originalY: 0 }; // Store original Y for animation
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(position);
+    mesh.scale.setScalar(0.01); // Start small for animation
+    mesh.userData = { ...thought, originalY: position.y };
 
-    // Set scale based on weight
-    const scale = CONFIG.VISUALIZATION.nodeSize.min +
-      (thought.weight / 100) * (CONFIG.VISUALIZATION.nodeSize.max - CONFIG.VISUALIZATION.nodeSize.min);
-    node.scale.setScalar(scale);
+    // Create text label
+    const labelDiv = document.createElement('div');
+    labelDiv.className = `thought-label thought-label-${thought.category}`;
+    
+    // Truncate text for display
+    const displayText = thought.text.length > 60 
+      ? thought.text.substring(0, 57) + '...' 
+      : thought.text;
+    
+    labelDiv.innerHTML = `
+      <div class="thought-number">#${thought.id}</div>
+      <div class="thought-text">${displayText}</div>
+      <div class="thought-meta">${thought.category} · ${thought.weight}%</div>
+    `;
+    
+    labelDiv.style.cssText = `
+      color: #e6f1ff;
+      font-size: 11px;
+      background: rgba(10, 25, 47, 0.95);
+      padding: 8px 12px;
+      border-radius: 8px;
+      border-left: 3px solid #${color.toString(16).padStart(6, '0')};
+      max-width: 200px;
+      backdrop-filter: blur(4px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    `;
+
+    // Style inner elements
+    const styleEl = document.createElement('style');
+    styleEl.textContent = `
+      .thought-label .thought-number {
+        color: #64ffda;
+        font-weight: bold;
+        font-size: 10px;
+        margin-bottom: 4px;
+      }
+      .thought-label .thought-text {
+        line-height: 1.4;
+        margin-bottom: 4px;
+      }
+      .thought-label .thought-meta {
+        color: #8892b0;
+        font-size: 9px;
+        text-transform: capitalize;
+      }
+    `;
+    if (!document.querySelector('#thought-label-styles')) {
+      styleEl.id = 'thought-label-styles';
+      document.head.appendChild(styleEl);
+    }
+
+    const label = new CSS2DObject(labelDiv);
+    label.position.set(0, 2.5, 0);
+    mesh.add(label);
 
     // Add to scene
-    this.scene.add(node);
+    this.scene.add(mesh);
 
     // Track for disposal
     this.disposables.add(geometry);
     this.disposables.add(material);
 
-    return node;
+    return { mesh, label, thought };
   }
 
   /**
-   * FIX #2: Create connection between nodes with tracking for dynamic updates
+   * Create animated connection line between nodes
    */
-  private createConnection(node1: THREE.Mesh, node2: THREE.Mesh, fromId: number, toId: number): void {
+  private createAnimatedConnection(fromNode: THREE.Mesh, toNode: THREE.Mesh): void {
     if (!this.scene) return;
 
-    const points = [node1.position.clone(), node2.position.clone()];
+    // Create curved line using QuadraticBezierCurve3
+    const start = fromNode.position.clone();
+    const end = toNode.position.clone();
+    
+    // Control point for curve (slightly above midpoint)
+    const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+    mid.y += 2;
+
+    const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+    const points = curve.getPoints(20);
+    
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    
+    // Gradient material using vertex colors
+    const colors: number[] = [];
+    const startColor = new THREE.Color(0x64ffda);
+    const endColor = new THREE.Color(0xa78bfa);
+    
+    for (let i = 0; i <= 20; i++) {
+      const t = i / 20;
+      const color = startColor.clone().lerp(endColor, t);
+      colors.push(color.r, color.g, color.b);
+    }
+    
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    
     const material = new THREE.LineBasicMaterial({
-      color: 0x2a4470,
-      opacity: CONFIG.VISUALIZATION.connectionOpacity,
-      transparent: true
+      vertexColors: true,
+      opacity: 0.7,
+      transparent: true,
+      linewidth: 2
     });
 
     const line = new THREE.Line(geometry, material);
     this.scene.add(line);
     this.lines.push(line);
-    
-    // FIX #2: Store connection data for dynamic updates
-    this.connectionData.push({
-      line,
-      fromNodeId: fromId,
-      toNodeId: toId
-    });
+
+    // Animate line drawing
+    this.animateLineDrawing(line, geometry);
 
     this.disposables.add(geometry);
     this.disposables.add(material);
   }
 
   /**
-   * FIX #2: Update connection line positions based on current node positions
+   * Animate line being drawn
    */
-  private updateConnectionPositions(): void {
-    const nodeMap = new Map<number, THREE.Mesh>();
-    this.nodes.forEach(node => {
-      nodeMap.set(node.userData.id, node);
-    });
-
-    this.connectionData.forEach(conn => {
-      const fromNode = nodeMap.get(conn.fromNodeId);
-      const toNode = nodeMap.get(conn.toNodeId);
-      
-      if (fromNode && toNode && conn.line.geometry) {
-        const positions = conn.line.geometry.attributes.position;
-        if (positions) {
-          const posArray = positions.array as Float32Array;
-          
-          // Update start point
-          posArray[0] = fromNode.position.x;
-          posArray[1] = fromNode.position.y;
-          posArray[2] = fromNode.position.z;
-          
-          // Update end point
-          posArray[3] = toNode.position.x;
-          posArray[4] = toNode.position.y;
-          posArray[5] = toNode.position.z;
-          
-          positions.needsUpdate = true;
-        }
-      }
-    });
-  }
-
-  /**
-   * Position nodes in 3D space using force-directed layout
-   */
-  private positionNodes(thoughts: ThoughtNode[], nodeMap: Map<number, THREE.Mesh>): void {
-    // Simple spherical positioning for now
-    thoughts.forEach((thought, index) => {
-      const node = nodeMap.get(thought.id);
-      if (!node) return;
-
-      // Position based on hierarchical level and randomness
-      const level = this.getNodeLevel(thought, thoughts);
-      const angle = (index / thoughts.length) * Math.PI * 2;
-      const radius = 15 + level * 10 + Math.random() * 5;
-      const height = (Math.random() - 0.5) * 20;
-
-      node.position.set(
-        Math.cos(angle) * radius,
-        height,
-        Math.sin(angle) * radius
-      );
-
-      // FIX #1: Store base position for oscillation animation
-      node.userData.originalY = height;
-      this.nodeBasePositions.set(thought.id, node.position.clone());
-
-      // Update thought position
-      thought.position = node.position.clone() as any;
-    });
-  }
-
-  /**
-   * Get hierarchical level of a node
-   */
-  private getNodeLevel(thought: ThoughtNode, allThoughts: ThoughtNode[]): number {
-    let level = 0;
-    let current = thought;
-
-    while (current.parent) {
-      level++;
-      const parent = allThoughts.find(t => t.id === current.parent);
-      if (!parent) break;
-      current = parent;
-    }
-
-    return level;
-  }
-
-  /**
-   * Update a specific node
-   */
-  updateNode(nodeId: number, updates: Partial<ThoughtNode>): void {
-    const node = this.nodes.find(n => n.userData.id === nodeId);
-    if (!node) return;
-
-    // Update node properties
-    Object.assign(node.userData, updates);
-
-    // Update visual properties
-    if (updates.weight !== undefined) {
-      const scale = CONFIG.VISUALIZATION.nodeSize.min +
-        (updates.weight / 100) * (CONFIG.VISUALIZATION.nodeSize.max - CONFIG.VISUALIZATION.nodeSize.min);
-      node.scale.setScalar(scale);
-    }
-
-    if (updates.category !== undefined) {
-      const material = node.material as THREE.MeshPhongMaterial;
-      material.color.setHex(CONFIG.THOUGHT_CATEGORIES[updates.category].color);
-    }
-  }
-
-  /**
-   * FIX #4: Animate node to new position with cancellation support
-   */
-  animateNodeToPosition(node: THREE.Mesh, target: THREE.Vector3, duration: number = 500): void {
-    const nodeUuid = node.uuid;
+  private animateLineDrawing(_line: THREE.Line, geometry: THREE.BufferGeometry): void {
+    const positions = geometry.attributes.position;
+    const totalPoints = positions.count;
     
-    // Cancel existing animation for this node
-    if (this.activeAnimations.has(nodeUuid)) {
-      cancelAnimationFrame(this.activeAnimations.get(nodeUuid)!);
-      this.activeAnimations.delete(nodeUuid);
+    // Store original positions
+    const originalPositions = new Float32Array(positions.array);
+    
+    // Start with all points at the first position
+    for (let i = 0; i < totalPoints; i++) {
+      positions.setXYZ(i, originalPositions[0], originalPositions[1], originalPositions[2]);
     }
+    positions.needsUpdate = true;
 
-    const start = node.position.clone();
+    // Animate revealing points
+    let currentPoint = 0;
+    const animateStep = () => {
+      if (currentPoint >= totalPoints) return;
+      
+      const idx = currentPoint * 3;
+      positions.setXYZ(currentPoint, originalPositions[idx], originalPositions[idx + 1], originalPositions[idx + 2]);
+      positions.needsUpdate = true;
+      
+      currentPoint++;
+      requestAnimationFrame(animateStep);
+    };
+    
+    animateStep();
+  }
+
+  /**
+   * Animate node appearing (scale up)
+   */
+  private animateNodeAppearance(node: THREE.Mesh): void {
+    const targetScale = 1;
+    const duration = 400;
     const startTime = Date.now();
+    const startScale = 0.01;
 
     const animate = () => {
       const elapsed = Date.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
       
-      // Ease out cubic
+      // Elastic ease out
       const eased = 1 - Math.pow(1 - progress, 3);
-
-      node.position.lerpVectors(start, target, eased);
+      const overshoot = progress < 1 ? Math.sin(progress * Math.PI) * 0.1 : 0;
+      
+      const scale = startScale + (targetScale - startScale) * eased + overshoot;
+      node.scale.setScalar(scale);
 
       if (progress < 1) {
-        const frameId = requestAnimationFrame(animate);
-        this.activeAnimations.set(nodeUuid, frameId);
-      } else {
-        this.activeAnimations.delete(nodeUuid);
-        // Update base position after animation completes
-        node.userData.originalY = target.y;
+        requestAnimationFrame(animate);
       }
     };
 
-    const frameId = requestAnimationFrame(animate);
-    this.activeAnimations.set(nodeUuid, frameId);
+    animate();
   }
 
   /**
-   * FIX #3: Clear all nodes and connections with proper disposal
+   * Update camera to follow the chain
+   */
+  private updateCameraToFollowChain(targetPosition: THREE.Vector3): void {
+    if (!this.camera || !this.controls) return;
+
+    const targetLookAt = targetPosition.clone();
+    const targetCameraPos = new THREE.Vector3(
+      targetPosition.x - 10,
+      targetPosition.y + 15,
+      targetPosition.z + 40
+    );
+
+    // Smooth camera transition
+    const duration = 800;
+    const startTime = Date.now();
+    const startPos = this.camera.position.clone();
+    const startTarget = this.controls.target.clone();
+
+    const animateCamera = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+
+      this.camera!.position.lerpVectors(startPos, targetCameraPos, eased);
+      this.controls!.target.lerpVectors(startTarget, targetLookAt, eased);
+      this.controls!.update();
+
+      if (progress < 1) {
+        requestAnimationFrame(animateCamera);
+      }
+    };
+
+    animateCamera();
+  }
+
+  /**
+   * Clear all nodes and connections
    */
   clearScene(): void {
     if (!this.scene) return;
 
-    // FIX #4: Cancel all active animations
+    // Cancel all active animations
     this.activeAnimations.forEach((frameId) => {
       cancelAnimationFrame(frameId);
     });
     this.activeAnimations.clear();
 
-    // Remove nodes
+    // Remove nodes and their labels
     this.nodes.forEach(node => {
+      // Remove CSS2D labels
+      node.children.forEach(child => {
+        if (child instanceof CSS2DObject) {
+          child.element.remove();
+        }
+      });
       this.scene!.remove(node);
     });
 
@@ -436,7 +552,7 @@ export class VisualizationManager implements IVisualizationManager {
       this.scene!.remove(line);
     });
 
-    // FIX #3: Proper disposal of all tracked resources
+    // Dispose all tracked resources
     this.disposables.forEach(disposable => {
       if (disposable && typeof disposable.dispose === 'function') {
         disposable.dispose();
@@ -446,19 +562,27 @@ export class VisualizationManager implements IVisualizationManager {
     this.nodes = [];
     this.lines = [];
     this.connectionData = [];
+    this.nodeDataMap.clear();
     this.disposables.clear();
-    this.nodeBasePositions.clear();
+    this.chainPosition = 0;
     
-    // Re-create central sphere and lighting after clear
+    // Re-create central sphere and lighting
     this.setupLighting();
     this.createCentralSphere();
+
+    // Reset camera
+    if (this.camera && this.controls) {
+      this.camera.position.set(0, 15, 50);
+      this.controls.target.set(0, 0, 0);
+      this.controls.update();
+    }
   }
 
   /**
    * Handle window resize
    */
   private handleResize(): void {
-    if (!this.camera || !this.renderer || !this.canvas) return;
+    if (!this.camera || !this.renderer || !this.labelRenderer || !this.canvas) return;
 
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
@@ -466,10 +590,11 @@ export class VisualizationManager implements IVisualizationManager {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+    this.labelRenderer.setSize(width, height);
   }
 
   /**
-   * Start animation loop with visibility detection
+   * Start animation loop
    */
   private startAnimation(): void {
     this.animationController = new AnimationController();
@@ -478,51 +603,81 @@ export class VisualizationManager implements IVisualizationManager {
       this.updateAnimation();
       this.controls?.update();
       this.renderer?.render(this.scene!, this.camera!);
+      this.labelRenderer?.render(this.scene!, this.camera!);
     });
   }
 
   /**
-   * FIX #1 & #2: Update animation frame with proper oscillation and connection updates
+   * Update animation frame
    */
   private updateAnimation(): void {
     const time = Date.now() * 0.001;
 
     // Animate central sphere
     if (this.centralSphere) {
-      this.centralSphere.rotation.x += 0.001;
-      this.centralSphere.rotation.y += 0.002;
+      this.centralSphere.rotation.y += 0.005;
+      const pulse = 1 + Math.sin(time * 2) * 0.05;
+      this.centralSphere.scale.setScalar(pulse);
     }
 
-    // FIX #1: Animate nodes with oscillation around base position (not accumulating)
+    // Subtle node animation
     this.nodes.forEach((node, i) => {
       const baseY = node.userData.originalY ?? node.position.y;
-      // Oscillate around base position instead of accumulating
-      node.position.y = baseY + Math.sin(time + i * 0.1) * 0.3;
-      node.rotation.y += 0.005;
+      node.position.y = baseY + Math.sin(time * 1.5 + i * 0.3) * 0.15;
+      node.rotation.y += 0.002;
     });
+  }
 
-    // FIX #2: Update connection lines to follow node positions
-    this.updateConnectionPositions();
+  /**
+   * Update a specific node
+   */
+  updateNode(nodeId: number, updates: Partial<ThoughtNode>): void {
+    const nodeData = this.nodeDataMap.get(nodeId);
+    if (!nodeData) return;
+
+    const { mesh } = nodeData;
+    Object.assign(mesh.userData, updates);
+
+    if (updates.category !== undefined) {
+      const material = mesh.material as THREE.MeshPhongMaterial;
+      material.color.setHex(CONFIG.THOUGHT_CATEGORIES[updates.category].color);
+    }
+  }
+
+  /**
+   * Get current chain length
+   */
+  getChainLength(): number {
+    return this.chainPosition;
+  }
+
+  /**
+   * Get connection count
+   */
+  getConnectionCount(): number {
+    return this.connectionData.length;
   }
 
   /**
    * Dispose of all resources
    */
   dispose(): void {
-    // Stop animation controller
     if (this.animationController) {
       this.animationController.dispose();
       this.animationController = null;
     }
 
-    // Cancel all position animations
     this.activeAnimations.forEach((frameId) => {
       cancelAnimationFrame(frameId);
     });
     this.activeAnimations.clear();
 
-    // Remove event listeners
     window.removeEventListener('resize', this.debouncedResize);
+
+    // Remove label renderer
+    if (this.labelRenderer) {
+      this.labelRenderer.domElement.remove();
+    }
 
     this.clearScene();
 
@@ -541,6 +696,6 @@ export class VisualizationManager implements IVisualizationManager {
    * Get memory usage estimate
    */
   getMemoryUsage(): number {
-    return (this.nodes.length * 0.1 + this.lines.length * 0.05);
+    return (this.nodes.length * 0.15 + this.lines.length * 0.05);
   }
 }

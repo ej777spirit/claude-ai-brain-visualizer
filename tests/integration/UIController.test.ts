@@ -212,7 +212,7 @@ describe('UIController Integration', () => {
 
     it('should show loading overlay', async () => {
       const loadingOverlay = document.getElementById('loadingOverlay')!;
-      const statusDot = document.getElementById('statusDot')!;
+      const sendButton = document.getElementById('sendButton')!;
 
       expect(loadingOverlay.classList.contains('active')).toBe(false);
 
@@ -222,8 +222,8 @@ describe('UIController Integration', () => {
       // Wait for batched notification to complete
       await new Promise(resolve => queueMicrotask(resolve));
 
-      // Status should update through state subscription
-      expect(statusDot.classList.contains('thinking')).toBe(true);
+      // Send button should be disabled when thinking
+      expect(sendButton.disabled).toBe(true);
     });
   });
 
@@ -262,9 +262,9 @@ describe('UIController Integration', () => {
       const userInput = document.getElementById('userInput');
       const sendButton = document.getElementById('sendButton');
 
-      expect(canvas?.getAttribute('aria-label')).toBe('3D thought visualization');
+      expect(canvas?.getAttribute('aria-label')).toBe('3D chain of thought visualization');
       expect(userInput?.getAttribute('aria-label')).toBe('Enter your question');
-      expect(sendButton?.getAttribute('aria-label')).toBe('Send question');
+      expect(sendButton?.getAttribute('aria-label')).toBe('Send question and generate chain of thought');
     });
   });
 
