@@ -44,11 +44,12 @@ app.get('/api/health', (req, res) => {
 // Get available models
 app.get('/api/models', (req, res) => {
   res.json({
-    models: ['claude', 'gemini', 'gpt'],
+    models: ['claude', 'gemini', 'gpt', 'kimi'],
     providers: {
       claude: { name: 'Anthropic Claude', models: ['claude-3-opus', 'claude-3-sonnet'] },
       gemini: { name: 'Google Gemini', models: ['gemini-pro', 'gemini-pro-vision'] },
-      gpt: { name: 'OpenAI GPT', models: ['gpt-4', 'gpt-3.5-turbo'] }
+      gpt: { name: 'OpenAI GPT', models: ['gpt-4', 'gpt-3.5-turbo'] },
+      kimi: { name: 'Moonshot Kimi', models: ['moonshot-v1-128k'] }
     }
   });
 });
@@ -76,6 +77,9 @@ app.post('/api/generate', async (req, res) => {
         break;
       case 'gpt':
         response = await callOpenAIAPI(prompt);
+        break;
+      case 'kimi':
+        response = await callKimiAPI(prompt);
         break;
       default:
         return res.status(400).json({
@@ -217,7 +221,7 @@ function generateThoughtsFromResponse(response, model) {
     thoughts.push({
       id: i + 1,
       parent: i > 0 && Math.random() > 0.4 ? Math.floor(Math.random() * i) + 1 : null,
-      text: `${model === 'claude' ? 'Claude analyzes' : model === 'gemini' ? 'Gemini processes' : 'GPT evaluates'}: ${getThoughtText(response, i)}`,
+      text: `${model === 'claude' ? 'Claude analyzes' : model === 'gemini' ? 'Gemini processes' : model === 'gpt' ? 'GPT evaluates' : 'Kimi reasons'}: ${getThoughtText(response, i)}`,
       category: categories[Math.floor(Math.random() * categories.length)],
       weight: Math.floor(Math.random() * 40) + 60,
       position: { x: 0, y: 0, z: 0 }, // Will be set by visualization
@@ -241,7 +245,8 @@ function generateSimulatedResponse(prompt, model) {
   const responses = {
     claude: `As Claude, I've analyzed your query "${prompt}" through multiple cognitive pathways. The visualization shows my thought process involving contextual understanding, pattern recognition, and logical synthesis.`,
     gemini: `Through Gemini's advanced processing, I've examined "${prompt}" using parallel analysis streams. The 3D visualization demonstrates how I connect different knowledge domains.`,
-    gpt: `GPT-4's analysis of "${prompt}" involves deep transformer-based reasoning. The thought graph illustrates how attention mechanisms focus on relevant concepts.`
+    gpt: `GPT-4's analysis of "${prompt}" involves deep transformer-based reasoning. The thought graph illustrates how attention mechanisms focus on relevant concepts.`,
+    kimi: `Using Kimi K2.5's advanced reasoning capabilities, I've processed "${prompt}" through deep contextual analysis. The visualization reveals my multi-layered thinking process combining semantic understanding with logical inference.`
   };
 
   return {
@@ -289,3 +294,40 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+// Moonshot Kimi API integration
+async function callKimiAPI(prompt) {
+  const apiKey = process.env.MOONSHOT_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('MOONSHOT_API_KEY not configured');
+  }
+
+  const response = await axios.post('https://api.moonshot.cn/v1/chat/completions', {
+    model: 'moonshot-v1-128k',
+    messages: [{
+      role: 'user',
+      content: prompt
+    }],
+    max_tokens: 1000,
+    temperature: 0.7
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    }
+  });
+
+  const content = response.data.choices[0].message.content;
+  const thoughts = generateThoughtsFromResponse(content, 'kimi');
+
+  return {
+    response: content,
+    thoughts,
+    model: 'Kimi K2.5',
+    confidence: Math.floor(Math.random() * 20) + 80,
+    metadata: {
+      tokensUsed: response.data.usage?.total_tokens || 0,
+      modelVersion: response.data.model
+    }
+  };
+}

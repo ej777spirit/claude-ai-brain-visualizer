@@ -5,7 +5,7 @@ A sophisticated 3D visualization tool for exploring AI thought processes with re
 ## 🚀 Features
 
 - **3D Thought Visualization**: Interactive Three.js-based neural network visualization
-- **Multi-AI Support**: Integration with OpenAI, Anthropic Claude, Google Gemini, and more
+- **Multi-AI Support**: Integration with OpenAI, Anthropic Claude, Google Gemini, Moonshot Kimi, and more
 - **Secure Architecture**: API proxy server to protect credentials
 - **Scientific Analysis**: Mathematical representations, matrices, and research metrics
 - **TypeScript**: Fully typed for better maintainability
@@ -76,6 +76,7 @@ The application uses a secure proxy server to handle API calls. **Never expose A
 - **Anthropic Claude**: Set `ANTHROPIC_API_KEY` in `.env`
 - **OpenAI GPT**: Set `OPENAI_API_KEY` in `.env`
 - **Google Gemini**: Set `GOOGLE_API_KEY` in `.env`
+- **Moonshot Kimi**: Set `MOONSHOT_API_KEY` in `.env`
 
 ### Demo Mode
 If no API keys are provided, the application will use **simulated responses** for demonstration with:

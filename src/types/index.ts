@@ -15,10 +15,10 @@ export type WebGLRenderer = any;
 export type ThoughtCategory = 'analysis' | 'synthesis' | 'recall' | 'evaluation';
 
 // AI model providers
-export type AIModel = 'claude' | 'gemini' | 'gpt';
+export type AIModel = 'claude' | 'gemini' | 'gpt' | 'kimi';
 
 // API providers
-export type APIProvider = 'anthropic' | 'google' | 'openai';
+export type APIProvider = 'anthropic' | 'google' | 'openai' | 'moonshot';
 
 // Research modes for different analysis types
 export type ResearchMode = 'conceptual' | 'mathematical' | 'logical' | 'creative';
@@ -183,7 +183,8 @@ export const CONFIG = {
   MODELS: {
     claude: { name: 'Claude 3', provider: 'anthropic' as APIProvider },
     gemini: { name: 'Gemini Pro', provider: 'google' as APIProvider },
-    gpt: { name: 'GPT-4', provider: 'openai' as APIProvider }
+    gpt: { name: 'GPT-4', provider: 'openai' as APIProvider },
+    kimi: { name: 'Kimi K2.5', provider: 'moonshot' as APIProvider }
   },
   VISUALIZATION: {
     nodeSize: { min: 0.5, max: 2.0 },

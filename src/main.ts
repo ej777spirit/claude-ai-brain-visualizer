@@ -105,6 +105,7 @@ function createUI(): void {
             <button class="model-btn active" data-model="claude">Claude</button>
             <button class="model-btn" data-model="gemini">Gemini</button>
             <button class="model-btn" data-model="gpt">GPT-4</button>
+            <button class="model-btn" data-model="kimi">Kimi K2.5</button>
           </div>
         </div>
         <div class="chat-container" id="chatContainer">
