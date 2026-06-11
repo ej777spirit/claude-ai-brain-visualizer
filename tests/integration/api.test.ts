@@ -4,6 +4,7 @@
  */
 
 import net from 'net';
+import { EventEmitter } from 'events';
 import { TextDecoder, TextEncoder } from 'util';
 
 Object.assign(global, { TextDecoder, TextEncoder });
@@ -20,6 +21,8 @@ const app = appModule;
 const request = require('supertest');
 const {
   extractStructuredThoughts,
+  getApiPort,
+  startServer,
   normalizeStructuredThoughts
 } = appModule.testables;
 
@@ -46,6 +49,25 @@ describe('API Integration Tests', () => {
 
   it('does not bind a network port when imported by tests', async () => {
     await expect(canBindPort(Number(process.env.PORT))).resolves.toBe(true);
+  });
+
+  it('uses API_PORT for the backend listener instead of platform PORT', () => {
+    expect(getApiPort({ API_PORT: '38988', PORT: '3000' })).toBe(38988);
+    expect(getApiPort({ PORT: '3000' })).toBe(3001);
+  });
+
+  it('logs a startup warning when the configured API port is already bound', () => {
+    const fakeServer = new EventEmitter();
+    const fakeApp = {
+      listen: jest.fn((_port: number, _callback: () => void) => fakeServer)
+    };
+    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    startServer(fakeApp, 38988);
+    fakeServer.emit('error', Object.assign(new Error('busy'), { code: 'EADDRINUSE' }));
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('38988'));
+    consoleWarnSpy.mockRestore();
   });
 
   describe('GET /api/health', () => {

@@ -11,7 +11,15 @@ const axios = require('axios');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const DEFAULT_API_PORT = 3001;
+const API_PORT = getApiPort();
+
+function getApiPort(env = process.env) {
+  const parsed = Number.parseInt(String(env.API_PORT || ''), 10);
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535
+    ? parsed
+    : DEFAULT_API_PORT;
+}
 
 // Security middleware
 app.use(helmet());
@@ -395,13 +403,28 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Start server only when launched directly; tests import the app in-process.
-if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`🚀 AI Brain Visualizer API Server running on port ${PORT}`);
+function startServer(serverApp = app, port = API_PORT) {
+  const server = serverApp.listen(port, () => {
+    console.log(`🚀 AI Brain Visualizer API Server running on port ${port}`);
     console.log(`📊 Rate limit: ${process.env.RATE_LIMIT_MAX_REQUESTS || 100} requests per ${process.env.RATE_LIMIT_WINDOW_MS || 900000}ms`);
     console.log(`🌐 CORS origin: ${process.env.CLIENT_URL || 'http://localhost:3000'}`);
   });
+
+  server.on('error', (error) => {
+    if (error && error.code === 'EADDRINUSE') {
+      console.warn(`Configured API_PORT ${port} is already bound. Choose a free API_PORT or stop the process using that port.`);
+      return;
+    }
+
+    console.error('API server startup error:', error);
+  });
+
+  return server;
+}
+
+// Start server only when launched directly; tests import the app in-process.
+if (require.main === module) {
+  startServer();
 }
 
 module.exports = app;
@@ -409,7 +432,9 @@ module.exports = app;
 module.exports.testables = {
   extractStructuredThoughts,
   normalizeStructuredThoughts,
-  generateThoughtsFromResponse
+  generateThoughtsFromResponse,
+  getApiPort,
+  startServer
 };
 // Moonshot Kimi API integration
 async function callKimiAPI(prompt) {

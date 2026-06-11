@@ -59,6 +59,8 @@ mockAxios.create.mockReturnValue(mockAxios);
   },
 
   cleanupMockElements: () => {
+    if (typeof document === 'undefined') return;
+
     const mocks = document.querySelectorAll('[data-testid]');
     mocks.forEach(mock => mock.remove());
   },
