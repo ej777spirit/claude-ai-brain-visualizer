@@ -11,7 +11,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { IVisualizationManager, ThoughtNode } from '../types';
+import { IVisualizationManager, ThoughtNode, VisualizationPattern } from '../types';
 import { CONFIG } from '../types';
 
 interface ConnectionData {
@@ -37,6 +37,20 @@ export class VisualizationManager implements IVisualizationManager {
   private sceneObjects: THREE.Object3D[] = [];
   private centralSphere: THREE.Mesh | null = null;
   private resizeHandler = (): void => this.handleResize();
+
+  // Current data and layout, so patterns can be re-applied without new data
+  private currentThoughts: ThoughtNode[] = [];
+  private currentPattern: VisualizationPattern = 'hierarchical';
+
+  // Interactivity (created lazily in initialize so tests can construct without WebGL)
+  private raycaster: THREE.Raycaster | null = null;
+  private pointerVec: THREE.Vector2 | null = null;
+  private hoveredNode: THREE.Mesh | null = null;
+  private selectedNode: THREE.Mesh | null = null;
+  private tooltip: HTMLDivElement | null = null;
+  private nodeSelectionHandler: ((thought: ThoughtNode | null) => void) | null = null;
+  private pointerDownPos: { x: number; y: number } | null = null;
+  private interactionAbort: AbortController | null = null;
 
   private animationId: number | null = null;
   private isInitialized = false;
@@ -67,6 +81,7 @@ export class VisualizationManager implements IVisualizationManager {
     this.setupLighting();
     this.createCentralSphere();
     this.setupEventListeners();
+    this.setupInteraction();
 
     this.startAnimation();
     this.isInitialized = true;
@@ -181,10 +196,125 @@ export class VisualizationManager implements IVisualizationManager {
   }
 
   /**
+   * Register a handler invoked when a node is clicked (null = deselected)
+   */
+  setNodeSelectionHandler(handler: (thought: ThoughtNode | null) => void): void {
+    this.nodeSelectionHandler = handler;
+  }
+
+  /**
+   * Setup raycaster-based hover and click interaction
+   */
+  private setupInteraction(): void {
+    this.raycaster = new THREE.Raycaster();
+    this.pointerVec = new THREE.Vector2();
+
+    this.tooltip = document.createElement('div');
+    this.tooltip.className = 'node-tooltip';
+    this.tooltip.setAttribute('role', 'tooltip');
+    this.tooltip.style.display = 'none';
+    (this.canvas.parentElement || document.body).appendChild(this.tooltip);
+
+    this.interactionAbort = new AbortController();
+    const { signal } = this.interactionAbort;
+
+    this.canvas.addEventListener('pointermove', (e) => this.handlePointerMove(e), { signal });
+    this.canvas.addEventListener('pointerdown', (e) => {
+      this.pointerDownPos = { x: e.clientX, y: e.clientY };
+    }, { signal });
+    this.canvas.addEventListener('pointerup', (e) => this.handlePointerUp(e), { signal });
+    this.canvas.addEventListener('pointerleave', () => this.clearHover(), { signal });
+  }
+
+  /**
+   * Find the node under the pointer, if any
+   */
+  private pickNode(event: PointerEvent): THREE.Mesh | null {
+    if (!this.raycaster || !this.pointerVec || !this.camera) return null;
+
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+
+    this.pointerVec.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointerVec.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointerVec, this.camera);
+
+    const hits = this.raycaster.intersectObjects(this.nodes);
+    return hits.length > 0 ? (hits[0].object as THREE.Mesh) : null;
+  }
+
+  private handlePointerMove(event: PointerEvent): void {
+    const node = this.pickNode(event);
+
+    if (node !== this.hoveredNode) {
+      this.clearHover();
+      if (node) {
+        this.hoveredNode = node;
+        node.scale.setScalar((node.userData.baseScale ?? 1) * 1.25);
+        this.canvas.style.cursor = 'pointer';
+      }
+    }
+
+    if (node && this.tooltip) {
+      const thought = node.userData as ThoughtNode;
+      this.tooltip.textContent =
+        `${thought.text}\n${thought.category} · weight ${thought.weight}`;
+      const parent = this.canvas.parentElement;
+      const parentRect = parent ? parent.getBoundingClientRect() : { left: 0, top: 0 };
+      this.tooltip.style.left = `${event.clientX - parentRect.left + 14}px`;
+      this.tooltip.style.top = `${event.clientY - parentRect.top + 14}px`;
+      this.tooltip.style.display = 'block';
+    }
+  }
+
+  private handlePointerUp(event: PointerEvent): void {
+    // Only treat as a click if the pointer barely moved (OrbitControls drags otherwise)
+    if (!this.pointerDownPos) return;
+    const moved = Math.hypot(
+      event.clientX - this.pointerDownPos.x,
+      event.clientY - this.pointerDownPos.y
+    );
+    this.pointerDownPos = null;
+    if (moved > 5) return;
+
+    const node = this.pickNode(event);
+    this.setSelectedNode(node);
+    this.nodeSelectionHandler?.(node ? (node.userData as ThoughtNode) : null);
+  }
+
+  private setSelectedNode(node: THREE.Mesh | null): void {
+    if (this.selectedNode) {
+      const material = this.selectedNode.material as THREE.MeshPhongMaterial;
+      material.emissive?.setHex(0x000000);
+    }
+    this.selectedNode = node;
+    if (node) {
+      const material = node.material as THREE.MeshPhongMaterial;
+      material.emissive?.setHex(0x335577);
+    }
+  }
+
+  private clearHover(): void {
+    if (this.hoveredNode) {
+      this.hoveredNode.scale.setScalar(this.hoveredNode.userData.baseScale ?? 1);
+      this.hoveredNode = null;
+    }
+    this.canvas.style.cursor = '';
+    if (this.tooltip) {
+      this.tooltip.style.display = 'none';
+    }
+  }
+
+  /**
    * Create visualization from thought nodes
    */
-  createVisualization(thoughts: ThoughtNode[]): void {
+  createVisualization(thoughts: ThoughtNode[], pattern?: VisualizationPattern): void {
     this.clearScene();
+
+    this.currentThoughts = thoughts;
+    if (pattern) {
+      this.currentPattern = pattern;
+    }
 
     // Create node map for connections
     const nodeMap = new Map<number, THREE.Mesh>();
@@ -225,10 +355,11 @@ export class VisualizationManager implements IVisualizationManager {
     const node = new THREE.Mesh(geometry, material);
     node.userData = { ...thought, originalY: 0 }; // Store original Y for animation
 
-    // Set scale based on weight
+    // Set scale based on weight; remember it so hover effects can restore it
     const scale = CONFIG.VISUALIZATION.nodeSize.min +
       (thought.weight / 100) * (CONFIG.VISUALIZATION.nodeSize.max - CONFIG.VISUALIZATION.nodeSize.min);
     node.scale.setScalar(scale);
+    node.userData.baseScale = scale;
 
     // Add to scene
     this.scene.add(node);
@@ -304,34 +435,102 @@ export class VisualizationManager implements IVisualizationManager {
   }
 
   /**
-   * Position nodes in 3D space using force-directed layout
+   * Position nodes in 3D space according to the active visualization pattern
    */
   private positionNodes(thoughts: ThoughtNode[], nodeMap: Map<number, THREE.Mesh>): void {
-    // Simple spherical positioning for now
     thoughts.forEach((thought, index) => {
       const node = nodeMap.get(thought.id);
       if (!node) return;
 
-      // Position based on hierarchical level with deterministic jitter,
-      // so the same thought graph always produces the same layout
-      const level = this.getNodeLevel(thought, thoughts);
-      const angle = (index / thoughts.length) * Math.PI * 2;
-      const radius = 15 + level * 10 + this.seededOffset(thought.id) * 5;
-      const height = (this.seededOffset(thought.id + 7919) - 0.5) * 20;
+      const { x, y, z } = this.layoutPosition(thought, index, thoughts);
+      node.position.set(x, y, z);
 
-      node.position.set(
-        Math.cos(angle) * radius,
-        height,
-        Math.sin(angle) * radius
-      );
-
-      // FIX #1: Store base position for oscillation animation
-      node.userData.originalY = height;
+      // Store base position for oscillation animation
+      node.userData.originalY = y;
       this.nodeBasePositions.set(thought.id, node.position.clone());
 
       // Update thought position
       thought.position = node.position.clone() as any;
     });
+  }
+
+  /**
+   * Compute a node position for the active pattern. All layouts are
+   * deterministic: the same graph and pattern always look the same.
+   */
+  private layoutPosition(
+    thought: ThoughtNode,
+    index: number,
+    thoughts: ThoughtNode[]
+  ): { x: number; y: number; z: number } {
+    const categories = Object.keys(CONFIG.THOUGHT_CATEGORIES);
+
+    switch (this.currentPattern) {
+      case 'network': {
+        // Fibonacci sphere: evenly distributes nodes over a sphere surface
+        const n = thoughts.length;
+        const offset = 2 / n;
+        const yUnit = index * offset - 1 + offset / 2;
+        const r = Math.sqrt(Math.max(0, 1 - yUnit * yUnit));
+        const phi = index * Math.PI * (3 - Math.sqrt(5));
+        const radius = 22;
+        return {
+          x: Math.cos(phi) * r * radius,
+          y: yUnit * radius * 0.8,
+          z: Math.sin(phi) * r * radius
+        };
+      }
+
+      case 'timeline': {
+        // Reasoning order left-to-right, weight as height, category as depth row
+        const n = thoughts.length;
+        const spacing = n > 1 ? Math.min(8, 60 / (n - 1)) : 0;
+        const catIndex = Math.max(0, categories.indexOf(thought.category));
+        return {
+          x: (index - (n - 1) / 2) * spacing,
+          y: ((thought.weight - 50) / 50) * 10,
+          z: (catIndex - (categories.length - 1) / 2) * 6
+        };
+      }
+
+      case 'matrix': {
+        // Grid: one row per category, columns in reasoning order
+        const catIndex = Math.max(0, categories.indexOf(thought.category));
+        const col = thoughts.slice(0, index).filter(t => t.category === thought.category).length;
+        return {
+          x: (col - 2.5) * 7,
+          y: (catIndex - (categories.length - 1) / 2) * 8,
+          z: 0
+        };
+      }
+
+      case 'hierarchical':
+      default: {
+        // Radial rings by depth with deterministic jitter
+        const level = this.getNodeLevel(thought, thoughts);
+        const angle = (index / thoughts.length) * Math.PI * 2;
+        const radius = 15 + level * 10 + this.seededOffset(thought.id) * 5;
+        const height = (this.seededOffset(thought.id + 7919) - 0.5) * 20;
+        return {
+          x: Math.cos(angle) * radius,
+          y: height,
+          z: Math.sin(angle) * radius
+        };
+      }
+    }
+  }
+
+  /**
+   * Re-layout the current visualization with a different pattern.
+   * Connection lines follow automatically via updateConnectionPositions.
+   */
+  applyPattern(pattern: VisualizationPattern): void {
+    this.currentPattern = pattern;
+    if (!this.isInitialized || this.nodes.length === 0) return;
+
+    const nodeMap = new Map<number, THREE.Mesh>();
+    this.nodes.forEach(node => nodeMap.set(node.userData.id, node));
+    this.positionNodes(this.currentThoughts, nodeMap);
   }
 
   /**
@@ -454,6 +653,15 @@ export class VisualizationManager implements IVisualizationManager {
     this.connectionData = [];
     this.disposables.clear();
     this.nodeBasePositions.clear();
+    this.currentThoughts = [];
+
+    // Reset interaction state tied to removed nodes
+    this.hoveredNode = null;
+    this.selectedNode = null;
+    this.canvas.style.cursor = '';
+    if (this.tooltip) {
+      this.tooltip.style.display = 'none';
+    }
   }
 
   /**
@@ -524,6 +732,10 @@ export class VisualizationManager implements IVisualizationManager {
     this.clearScene();
 
     window.removeEventListener('resize', this.resizeHandler);
+    this.interactionAbort?.abort();
+    this.interactionAbort = null;
+    this.tooltip?.remove();
+    this.tooltip = null;
 
     if (this.scene) {
       this.sceneObjects.forEach(obj => this.scene!.remove(obj));

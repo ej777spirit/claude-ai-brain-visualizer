@@ -105,6 +105,115 @@ app.post('/api/generate', async (req, res) => {
   }
 });
 
+// Instruction appended to real API calls so the model reports its own
+// reasoning steps as structured data we can visualize faithfully
+const STRUCTURE_INSTRUCTION = `
+
+After your answer, append a fenced JSON code block (\`\`\`json ... \`\`\`) describing the reasoning steps you actually took, in exactly this shape:
+{"thoughts":[{"id":1,"parent":null,"text":"short description of the reasoning step","category":"analysis","weight":75,"confidence":80}]}
+Rules: 5-15 thoughts; ids are sequential integers starting at 1; "parent" is the id of an earlier thought this step builds on (null only for the first); "category" is one of "analysis", "synthesis", "recall", "evaluation"; "weight" and "confidence" are integers 0-100. Do not mention or explain the JSON block in your answer.`;
+
+// Parse the trailing JSON block of a model response into validated thoughts.
+// Returns { answer, thoughts } or null if no usable structure was found.
+function extractStructuredThoughts(content) {
+  const text = String(content || '');
+  const match = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```\s*$/i);
+  if (!match) return null;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+
+  const raw = Array.isArray(parsed) ? parsed : parsed.thoughts;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+
+  const thoughts = normalizeStructuredThoughts(raw);
+  if (thoughts.length === 0) return null;
+
+  const answer = text.slice(0, match.index).trim();
+  if (!answer) return null;
+
+  return { answer, thoughts };
+}
+
+// Validate and repair model-reported thoughts so malformed output
+// can't break the client (bad parents, categories, ranges)
+function normalizeStructuredThoughts(raw) {
+  const categories = ['analysis', 'synthesis', 'recall', 'evaluation'];
+  const clamp = (v, fallback) => {
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : fallback;
+  };
+
+  const entries = raw
+    .filter(t => t && typeof t.text === 'string' && t.text.trim().length > 0)
+    .slice(0, 15);
+
+  // Map original ids to sequential ones so parents stay resolvable
+  const idMap = new Map();
+  entries.forEach((t, i) => idMap.set(t.id, i + 1));
+
+  return entries.map((t, i) => {
+    const newId = i + 1;
+    let parent = t.parent != null ? idMap.get(t.parent) : null;
+    // Parents must reference an earlier node; repair with a binary-tree fallback
+    if (i === 0) {
+      parent = null;
+    } else if (!parent || parent >= newId) {
+      parent = Math.floor((newId - 2) / 2) + 1;
+    }
+
+    const category = categories.includes(String(t.category).toLowerCase())
+      ? String(t.category).toLowerCase()
+      : categories[i % categories.length];
+    const weight = clamp(t.weight, 70);
+
+    return {
+      id: newId,
+      parent,
+      text: t.text.trim().slice(0, 200),
+      category,
+      weight,
+      position: { x: 0, y: 0, z: 0 }, // Will be set by visualization
+      connections: [],
+      metadata: {
+        depth: 0, // Recomputed below from parent chain
+        branchId: `branch-${i}`,
+        timestamp: Date.now(),
+        confidence: clamp(t.confidence, weight)
+      }
+    };
+  }).map((t, _i, all) => {
+    let depth = 0;
+    let current = t;
+    while (current.parent != null && depth < all.length) {
+      current = all[current.parent - 1];
+      depth++;
+    }
+    t.metadata.depth = depth;
+    return t;
+  });
+}
+
+// Run a provider call and shape the result: prefer model-reported thoughts,
+// fall back to sentence-derived ones
+function shapeProviderResponse(content, model, displayName, metadata) {
+  const structured = extractStructuredThoughts(content);
+  return {
+    response: structured ? structured.answer : content,
+    thoughts: structured ? structured.thoughts : generateThoughtsFromResponse(content, model),
+    model: displayName,
+    metadata: {
+      ...metadata,
+      // 'model' = reasoning reported by the model itself; 'derived' = built from sentences
+      thoughtSource: structured ? 'model' : 'derived'
+    }
+  };
+}
+
 // Claude API integration
 async function callClaudeAPI(prompt) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -115,10 +224,10 @@ async function callClaudeAPI(prompt) {
 
   const response = await axios.post('https://api.anthropic.com/v1/messages', {
     model: 'claude-sonnet-4-6',
-    max_tokens: 1000,
+    max_tokens: 2000,
     messages: [{
       role: 'user',
-      content: prompt
+      content: prompt + STRUCTURE_INSTRUCTION
     }]
   }, {
     headers: {
@@ -129,17 +238,11 @@ async function callClaudeAPI(prompt) {
   });
 
   const content = response.data.content[0].text;
-  const thoughts = generateThoughtsFromResponse(content, 'claude');
 
-  return {
-    response: content,
-    thoughts,
-    model: 'Claude',
-    metadata: {
-      tokensUsed: response.data.usage?.input_tokens + response.data.usage?.output_tokens || 0,
-      modelVersion: response.data.model
-    }
-  };
+  return shapeProviderResponse(content, 'claude', 'Claude', {
+    tokensUsed: response.data.usage?.input_tokens + response.data.usage?.output_tokens || 0,
+    modelVersion: response.data.model
+  });
 }
 
 // Gemini API integration
@@ -153,23 +256,17 @@ async function callGeminiAPI(prompt) {
   const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
     contents: [{
       parts: [{
-        text: prompt
+        text: prompt + STRUCTURE_INSTRUCTION
       }]
     }]
   });
 
   const content = response.data.candidates[0].content.parts[0].text;
-  const thoughts = generateThoughtsFromResponse(content, 'gemini');
 
-  return {
-    response: content,
-    thoughts,
-    model: 'Gemini',
-    metadata: {
-      tokensUsed: response.data.usageMetadata?.totalTokenCount || 0,
-      modelVersion: 'gemini-2.0-flash'
-    }
-  };
+  return shapeProviderResponse(content, 'gemini', 'Gemini', {
+    tokensUsed: response.data.usageMetadata?.totalTokenCount || 0,
+    modelVersion: 'gemini-2.0-flash'
+  });
 }
 
 // OpenAI API integration
@@ -184,9 +281,9 @@ async function callOpenAIAPI(prompt) {
     model: 'gpt-4o',
     messages: [{
       role: 'user',
-      content: prompt
+      content: prompt + STRUCTURE_INSTRUCTION
     }],
-    max_tokens: 1000
+    max_tokens: 2000
   }, {
     headers: {
       'Content-Type': 'application/json',
@@ -195,17 +292,11 @@ async function callOpenAIAPI(prompt) {
   });
 
   const content = response.data.choices[0].message.content;
-  const thoughts = generateThoughtsFromResponse(content, 'gpt');
 
-  return {
-    response: content,
-    thoughts,
-    model: 'GPT-4o',
-    metadata: {
-      tokensUsed: response.data.usage?.total_tokens || 0,
-      modelVersion: response.data.model
-    }
-  };
+  return shapeProviderResponse(content, 'gpt', 'GPT-4o', {
+    tokensUsed: response.data.usage?.total_tokens || 0,
+    modelVersion: response.data.model
+  });
 }
 
 // Generate thought nodes derived from the actual AI response content
@@ -289,7 +380,8 @@ function generateSimulatedResponse(prompt, model) {
       tokensUsed: 0,
       modelVersion: 'simulated',
       // Always flag fallbacks so the client can show the demo-mode banner
-      isSimulated: true
+      isSimulated: true,
+      thoughtSource: 'derived'
     }
   };
 }
@@ -311,6 +403,12 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+// Internal helpers exposed for testing
+module.exports.testables = {
+  extractStructuredThoughts,
+  normalizeStructuredThoughts,
+  generateThoughtsFromResponse
+};
 // Moonshot Kimi API integration
 async function callKimiAPI(prompt) {
   const apiKey = process.env.MOONSHOT_API_KEY;
@@ -323,9 +421,9 @@ async function callKimiAPI(prompt) {
     model: 'moonshot-v1-128k',
     messages: [{
       role: 'user',
-      content: prompt
+      content: prompt + STRUCTURE_INSTRUCTION
     }],
-    max_tokens: 1000,
+    max_tokens: 2000,
     temperature: 0.7
   }, {
     headers: {
@@ -335,15 +433,9 @@ async function callKimiAPI(prompt) {
   });
 
   const content = response.data.choices[0].message.content;
-  const thoughts = generateThoughtsFromResponse(content, 'kimi');
 
-  return {
-    response: content,
-    thoughts,
-    model: 'Kimi K2.5',
-    metadata: {
-      tokensUsed: response.data.usage?.total_tokens || 0,
-      modelVersion: response.data.model
-    }
-  };
+  return shapeProviderResponse(content, 'kimi', 'Kimi K2.5', {
+    tokensUsed: response.data.usage?.total_tokens || 0,
+    modelVersion: response.data.model
+  });
 }

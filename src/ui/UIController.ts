@@ -3,20 +3,27 @@
  * @module ui/UIController
  */
 
-import { IUIController, AppState, AIModel } from '../types';
+import { IUIController, AppState, AIModel, ThoughtNode, VisualizationPattern } from '../types';
 import { StateManager } from '../services/state/StateManager';
 import { APIClient } from '../services/api/APIClient';
 import { VisualizationManager } from '../visualization/VisualizationManager';
+import { GraphAnalysis } from '../services/analysis/GraphAnalysis';
 
 export class UIController implements IUIController {
   private stateManager: StateManager;
   private apiClient: APIClient;
   private visualizationManager: VisualizationManager;
 
+  private lastPattern: VisualizationPattern = 'hierarchical';
+
   // DOM elements - will be initialized after DOM is ready
   private elements: {
     // Model selection
     modelButtons: NodeListOf<HTMLButtonElement>;
+    // Pattern selection (absent in some test fixtures, hence nullable)
+    patternButtons: NodeListOf<HTMLButtonElement>;
+    metricsContent: HTMLDivElement | null;
+    nodeDetails: HTMLDivElement | null;
     // Chat interface
     chatContainer: HTMLDivElement;
     userInput: HTMLInputElement;
@@ -76,6 +83,10 @@ export class UIController implements IUIController {
     this.elements = {
       // Model selection
       modelButtons: document.querySelectorAll('.model-btn') as NodeListOf<HTMLButtonElement>,
+      // Pattern selection and analysis panels
+      patternButtons: document.querySelectorAll('.pattern-btn') as NodeListOf<HTMLButtonElement>,
+      metricsContent: document.getElementById('metricsContent') as HTMLDivElement | null,
+      nodeDetails: document.getElementById('nodeDetails') as HTMLDivElement | null,
       // Chat interface
       chatContainer: document.getElementById('chatContainer') as HTMLDivElement,
       userInput: document.getElementById('userInput') as HTMLInputElement,
@@ -129,6 +140,9 @@ export class UIController implements IUIController {
     this.startPerformanceMonitoring();
     this.initializeAccessibility();
 
+    // Show node details when a node is clicked in the 3D view
+    this.visualizationManager.setNodeSelectionHandler(thought => this.showNodeDetails(thought));
+
     // Initial UI state
     this.updateStatus('Ready to analyze', 'ready');
     this.updateStats([]);
@@ -146,6 +160,15 @@ export class UIController implements IUIController {
     // Model selection
     elements.modelButtons.forEach(btn => {
       btn.addEventListener('click', () => this.handleModelChange(btn));
+    });
+
+    // Visualization pattern selection
+    elements.patternButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const pattern = btn.dataset.pattern as VisualizationPattern;
+        if (!pattern) return;
+        this.stateManager.dispatch({ type: 'PATTERN_CHANGED', payload: pattern });
+      });
     });
 
     // Chat interface
@@ -219,11 +242,12 @@ export class UIController implements IUIController {
       const response = await this.apiClient.generateResponse(message, state.currentModel);
 
       // Update visualization
-      this.visualizationManager.createVisualization(response.thoughts);
+      this.visualizationManager.createVisualization(response.thoughts, state.currentPattern);
 
-      // Update response display and statistics
+      // Update response display, statistics and graph metrics
       this.updateResponseDisplay(response);
       this.updateStats(response.thoughts);
+      this.updateMetrics(response.thoughts);
 
       // Finish thinking
       this.stateManager.dispatch({ type: 'THINKING_FINISHED', payload: response });
@@ -251,6 +275,8 @@ export class UIController implements IUIController {
     this.visualizationManager.clearScene();
     this.resetResponseDisplay();
     this.updateStats([]);
+    this.updateMetrics([]);
+    this.showNodeDetails(null);
     this.stateManager.reset();
 
     elements.saveBtn.disabled = true;
@@ -289,8 +315,10 @@ export class UIController implements IUIController {
 
         // Load thoughts into visualization
         if (session.thoughts) {
-          this.visualizationManager.createVisualization(session.thoughts);
+          const pattern = this.stateManager.getState().currentPattern;
+          this.visualizationManager.createVisualization(session.thoughts, pattern);
           this.updateStats(session.thoughts);
+          this.updateMetrics(session.thoughts);
         }
 
         this.addMessage('Session loaded', 'system');
@@ -430,6 +458,78 @@ export class UIController implements IUIController {
   }
 
   /**
+   * Compute and render mathjs-based graph metrics; stores the adjacency
+   * matrix in the knowledge graph state for downstream analysis
+   */
+  updateMetrics(thoughts: ThoughtNode[]): void {
+    const container = this.elements?.metricsContent;
+    if (!container) return;
+
+    if (thoughts.length === 0) {
+      container.textContent = 'Run an analysis to compute graph metrics.';
+      return;
+    }
+
+    const metrics = GraphAnalysis.analyze(thoughts);
+
+    this.stateManager.setState({
+      knowledgeGraph: {
+        matrices: new Map<string, any>([['adjacency', metrics.adjacency]])
+      }
+    });
+
+    const rows: Array<[string, string]> = [
+      ['Connections', metrics.edgeCount.toString()],
+      ['Graph density', metrics.density.toFixed(3)],
+      ['Avg degree', metrics.avgDegree.toFixed(2)],
+      ['Weight μ / σ', `${metrics.weightMean.toFixed(1)} / ${metrics.weightStd.toFixed(1)}`],
+      ['Most central', metrics.centralNode
+        ? `#${metrics.centralNode.id} (${metrics.centralNode.category})`
+        : '—']
+    ];
+
+    const fragment = document.createDocumentFragment();
+    rows.forEach(([label, value]) => {
+      const row = document.createElement('div');
+      row.className = 'metric-row';
+      const labelEl = document.createElement('span');
+      labelEl.textContent = label;
+      const valueEl = document.createElement('span');
+      valueEl.className = 'metric-value';
+      valueEl.textContent = value;
+      row.append(labelEl, valueEl);
+      fragment.appendChild(row);
+    });
+    container.replaceChildren(fragment);
+  }
+
+  /**
+   * Display details for a node selected in the 3D view
+   */
+  showNodeDetails(thought: ThoughtNode | null): void {
+    const container = this.elements?.nodeDetails;
+    if (!container) return;
+
+    if (!thought) {
+      container.textContent = 'Click a node in the 3D view to inspect it.';
+      return;
+    }
+
+    const text = document.createElement('div');
+    text.className = 'detail-text';
+    text.textContent = thought.text;
+
+    const meta = document.createElement('div');
+    meta.textContent =
+      `Category: ${thought.category} · Weight: ${thought.weight}` +
+      ` · Confidence: ${thought.metadata?.confidence ?? '—'}` +
+      (thought.parent != null ? ` · Parent: #${thought.parent}` : ' · Root node');
+
+    container.replaceChildren(text, meta);
+    this.announceToScreenReader(`Selected thought: ${thought.text}`);
+  }
+
+  /**
    * Update status indicator
    */
   updateStatus(text: string, status: 'ready' | 'thinking' | 'error'): void {
@@ -470,6 +570,15 @@ export class UIController implements IUIController {
 
     // Update performance stats
     elements.nodeCount.textContent = state.knowledgeGraph.nodes.length.toString();
+
+    // Re-layout visualization when the pattern changes
+    if (state.currentPattern !== this.lastPattern) {
+      this.lastPattern = state.currentPattern;
+      this.visualizationManager.applyPattern(state.currentPattern);
+      elements.patternButtons.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.pattern === state.currentPattern);
+      });
+    }
   }
 
   /**

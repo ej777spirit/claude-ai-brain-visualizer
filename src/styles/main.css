@@ -306,6 +306,96 @@ body {
   cursor: grabbing;
 }
 
+/* Visualization pattern selector */
+.pattern-selector {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  gap: 6px;
+  background: rgba(15, 28, 58, 0.9);
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  backdrop-filter: blur(10px);
+  z-index: 5;
+}
+
+.pattern-btn {
+  padding: 5px 10px;
+  background: var(--bg-dark);
+  color: var(--text-medium);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.pattern-btn:hover {
+  border-color: var(--primary-accent);
+}
+
+.pattern-btn.active {
+  background: var(--primary-accent);
+  color: var(--bg-dark);
+  font-weight: 600;
+}
+
+/* Node tooltip */
+.node-tooltip {
+  position: absolute;
+  max-width: 280px;
+  background: rgba(15, 28, 58, 0.95);
+  color: var(--text-light);
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-light);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  white-space: pre-line;
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* Graph metrics and node details */
+.metrics-section {
+  margin-top: 1rem;
+}
+
+.metrics-section h3 {
+  color: var(--primary-accent);
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+}
+
+.metrics-content,
+.node-details {
+  background: var(--bg-dark);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  font-size: 0.82rem;
+  color: var(--text-medium);
+  line-height: 1.7;
+}
+
+.metrics-content .metric-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.metrics-content .metric-value {
+  color: var(--text-light);
+  font-family: monospace;
+}
+
+.node-details .detail-text {
+  color: var(--text-light);
+  margin-bottom: 0.4rem;
+}
+
 /* Performance Stats */
 .perf-stats {
   position: absolute;

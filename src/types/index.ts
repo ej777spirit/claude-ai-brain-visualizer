@@ -147,7 +147,9 @@ export interface IAPIClient {
 
 export interface IVisualizationManager {
   initialize(canvas: HTMLCanvasElement): void;
-  createVisualization(thoughts: ThoughtNode[]): void;
+  createVisualization(thoughts: ThoughtNode[], pattern?: VisualizationPattern): void;
+  applyPattern(pattern: VisualizationPattern): void;
+  setNodeSelectionHandler(handler: (thought: ThoughtNode | null) => void): void;
   updateNode(nodeId: number, updates: Partial<ThoughtNode>): void;
   clearScene(): void;
   dispose(): void;

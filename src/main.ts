@@ -135,6 +135,14 @@ function createUI(): void {
       <div class="middle-panel" id="main-content">
         <canvas id="brain-canvas" tabindex="0" aria-label="3D thought visualization"></canvas>
 
+        <!-- Visualization pattern selector -->
+        <div class="pattern-selector" role="group" aria-label="Visualization pattern">
+          <button class="pattern-btn active" data-pattern="hierarchical">Hierarchy</button>
+          <button class="pattern-btn" data-pattern="network">Network</button>
+          <button class="pattern-btn" data-pattern="timeline">Timeline</button>
+          <button class="pattern-btn" data-pattern="matrix">Matrix</button>
+        </div>
+
         <!-- Performance Stats -->
         <div class="perf-stats" id="perfStats">
           FPS: <span id="fps">60</span> |
@@ -192,6 +200,20 @@ function createUI(): void {
           </div>
           <div id="categoryBreakdown" style="font-size: 0.8rem; color: var(--text-light);">
             Analysis: 0 • Synthesis: 0 • Recall: 0 • Evaluation: 0
+          </div>
+        </div>
+
+        <div class="metrics-section">
+          <h3>📐 Graph Metrics</h3>
+          <div class="metrics-content" id="metricsContent">
+            Run an analysis to compute graph metrics.
+          </div>
+        </div>
+
+        <div class="metrics-section">
+          <h3>🔍 Selected Thought</h3>
+          <div class="node-details" id="nodeDetails">
+            Click a node in the 3D view to inspect it.
           </div>
         </div>
       </div>

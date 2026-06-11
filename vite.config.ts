@@ -15,6 +15,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           three: ['three'],
+          math: ['mathjs'],
           vendor: ['axios']
         }
       }
