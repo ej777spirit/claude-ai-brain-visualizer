@@ -162,7 +162,7 @@ This creates optimized files in the `dist/` directory.
 
 ```env
 NODE_ENV=production
-PORT=3001
+API_PORT=3001
 CLIENT_URL=https://yourdomain.com
 ANTHROPIC_API_KEY=your_production_key
 # ... other API keys
