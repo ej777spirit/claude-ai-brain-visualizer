@@ -395,12 +395,14 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 AI Brain Visualizer API Server running on port ${PORT}`);
-  console.log(`📊 Rate limit: ${process.env.RATE_LIMIT_MAX_REQUESTS || 100} requests per ${process.env.RATE_LIMIT_WINDOW_MS || 900000}ms`);
-  console.log(`🌐 CORS origin: ${process.env.CLIENT_URL || 'http://localhost:3000'}`);
-});
+// Start server only when launched directly; tests import the app in-process.
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`🚀 AI Brain Visualizer API Server running on port ${PORT}`);
+    console.log(`📊 Rate limit: ${process.env.RATE_LIMIT_MAX_REQUESTS || 100} requests per ${process.env.RATE_LIMIT_WINDOW_MS || 900000}ms`);
+    console.log(`🌐 CORS origin: ${process.env.CLIENT_URL || 'http://localhost:3000'}`);
+  });
+}
 
 module.exports = app;
 // Internal helpers exposed for testing

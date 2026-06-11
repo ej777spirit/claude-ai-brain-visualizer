@@ -1,111 +1,160 @@
 /**
  * API Integration Tests
- * These tests run against a running server instance
+ * These tests exercise the Express app in-process with supertest.
  */
 
-import axios from 'axios';
+import net from 'net';
+import { TextDecoder, TextEncoder } from 'util';
 
-const API_BASE_URL = 'http://localhost:3001';
+Object.assign(global, { TextDecoder, TextEncoder });
+
+process.env.NODE_ENV = 'test';
+process.env.PORT = '38987';
+delete process.env.ANTHROPIC_API_KEY;
+delete process.env.GOOGLE_API_KEY;
+delete process.env.OPENAI_API_KEY;
+delete process.env.MOONSHOT_API_KEY;
+
+const appModule = require('../../server/apiProxy');
+const app = appModule;
+const request = require('supertest');
+const {
+  extractStructuredThoughts,
+  normalizeStructuredThoughts
+} = appModule.testables;
+
+const canBindPort = (port: number): Promise<boolean> => new Promise((resolve) => {
+  const server = net.createServer();
+
+  server.once('error', () => resolve(false));
+  server.once('listening', () => {
+    server.close(() => resolve(true));
+  });
+  server.listen(port, '127.0.0.1');
+});
 
 describe('API Integration Tests', () => {
-  // Skip tests if server is not running
-  const isServerRunning = async (): Promise<boolean> => {
-    try {
-      await axios.get(`${API_BASE_URL}/api/health`, { timeout: 1000 });
-      return true;
-    } catch {
-      return false;
-    }
-  };
+  let consoleErrorSpy: jest.SpyInstance;
 
-  let serverRunning = false;
-
-  beforeAll(async () => {
-    serverRunning = await isServerRunning();
-    if (!serverRunning) {
-      console.warn('⚠️  API server not running on port 3001. Skipping integration tests.');
-    }
+  beforeEach(() => {
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   });
 
-  (serverRunning ? describe : describe.skip)('GET /api/health', () => {
-    it('should return health status', async () => {
-      const response = await axios.get(`${API_BASE_URL}/api/health`);
-
-      expect(response.status).toBe(200);
-      expect(response.data).toHaveProperty('status', 'healthy');
-      expect(response.data).toHaveProperty('timestamp');
-      expect(response.data).toHaveProperty('version', '2.0.0');
-    });
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
   });
 
-  (serverRunning ? describe : describe.skip)('GET /api/models', () => {
-    it('should return available models', async () => {
-      const response = await axios.get(`${API_BASE_URL}/api/models`);
-
-      expect(response.status).toBe(200);
-      expect(response.data).toHaveProperty('models');
-      expect(response.data.models).toEqual(['claude', 'gemini', 'gpt']);
-      expect(response.data).toHaveProperty('providers');
-    });
+  it('does not bind a network port when imported by tests', async () => {
+    await expect(canBindPort(Number(process.env.PORT))).resolves.toBe(true);
   });
 
-  (serverRunning ? describe : describe.skip)('POST /api/generate', () => {
-    it('should require prompt and model', async () => {
-      try {
-        await axios.post(`${API_BASE_URL}/api/generate`, {});
-        fail('Should have thrown an error');
-      } catch (error: any) {
-        expect(error.response.status).toBe(400);
-      }
-    });
+  describe('GET /api/health', () => {
+    it('returns health status and version metadata', async () => {
+      const response = await request(app).get('/api/health').expect(200);
 
-    it('should reject invalid model', async () => {
-      try {
-        await axios.post(`${API_BASE_URL}/api/generate`, {
-          prompt: 'Test prompt',
-          model: 'invalid-model'
-        });
-        fail('Should have thrown an error');
-      } catch (error: any) {
-        expect(error.response.status).toBe(400);
-        expect(error.response.data.error).toContain('Unsupported model');
-      }
-    });
-
-    it('should handle Claude API calls (simulated)', async () => {
-      const response = await axios.post(`${API_BASE_URL}/api/generate`, {
-        prompt: 'Explain quantum computing',
-        model: 'claude'
+      expect(response.body).toMatchObject({
+        status: 'healthy',
+        version: '2.0.0'
       });
+      expect(Date.parse(response.body.timestamp)).not.toBeNaN();
+    });
+  });
 
-      expect(response.status).toBe(200);
-      expect(response.data).toHaveProperty('response');
-      expect(response.data).toHaveProperty('thoughts');
-      expect(response.data).toHaveProperty('model');
-      expect(response.data).toHaveProperty('confidence');
-      expect(response.data).toHaveProperty('metadata');
+  describe('GET /api/models', () => {
+    it('returns all available model providers', async () => {
+      const response = await request(app).get('/api/models').expect(200);
 
-      expect(response.data.model).toBe('CLAUDE');
-      expect(response.data.confidence).toBeGreaterThanOrEqual(80);
-      expect(Array.isArray(response.data.thoughts)).toBe(true);
+      expect(response.body.models).toEqual(['claude', 'gemini', 'gpt', 'kimi']);
+      expect(Object.keys(response.body.providers)).toEqual(['claude', 'gemini', 'gpt', 'kimi']);
+    });
+  });
+
+  describe('POST /api/generate', () => {
+    it('validates required prompt and model inputs', async () => {
+      const response = await request(app)
+        .post('/api/generate')
+        .send({})
+        .expect(400);
+
+      expect(response.body.error).toContain('Missing required parameters');
     });
 
-    it('should generate appropriate thought structures', async () => {
-      const response = await axios.post(`${API_BASE_URL}/api/generate`, {
-        prompt: 'Test prompt',
-        model: 'claude'
+    it('rejects unsupported models', async () => {
+      const response = await request(app)
+        .post('/api/generate')
+        .send({ prompt: 'Test prompt', model: 'invalid-model' })
+        .expect(400);
+
+      expect(response.body.error).toContain('Unsupported model');
+    });
+
+    it('returns a provenance-tagged simulated response when provider keys are unavailable', async () => {
+      const response = await request(app)
+        .post('/api/generate')
+        .send({ prompt: 'Explain quantum computing', model: 'claude' })
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        model: 'CLAUDE',
+        metadata: {
+          isSimulated: true,
+          thoughtSource: 'derived',
+          tokensUsed: 0,
+          modelVersion: 'simulated'
+        }
       });
+      expect(response.body.response).toContain('Explain quantum computing');
+      expect(response.body.confidence).toBeGreaterThanOrEqual(80);
+      expect(response.body.confidence).toBeLessThanOrEqual(99);
+      expect(response.body.metadata.processingTime).toBeGreaterThanOrEqual(0);
+      expect(response.body.thoughts).toHaveLength(8);
+      expect(response.body.thoughts[0]).toMatchObject({
+        id: 1,
+        parent: null,
+        text: expect.stringContaining('Claude analyzes: As Claude'),
+        category: 'analysis',
+        position: { x: 0, y: 0, z: 0 },
+        connections: []
+      });
+    });
+  });
 
-      const thoughts = response.data.thoughts;
-      expect(thoughts.length).toBeGreaterThan(5);
+  describe('structured thought helpers', () => {
+    it('extracts trailing JSON thoughts and removes the structure block from the answer', () => {
+      const result = extractStructuredThoughts(`Answer only.
 
-      const firstThought = thoughts[0];
-      expect(firstThought).toHaveProperty('id');
-      expect(firstThought).toHaveProperty('text');
-      expect(firstThought).toHaveProperty('category');
-      expect(firstThought).toHaveProperty('weight');
-      expect(firstThought).toHaveProperty('position');
-      expect(firstThought).toHaveProperty('metadata');
+\`\`\`json
+{"thoughts":[{"id":"root","parent":null,"text":"First step","category":"analysis","weight":75,"confidence":80}]}
+\`\`\``);
+
+      expect(result?.answer).toBe('Answer only.');
+      expect(result?.thoughts).toHaveLength(1);
+      expect(result?.thoughts[0]).toMatchObject({
+        id: 1,
+        parent: null,
+        text: 'First step',
+        category: 'analysis',
+        weight: 75,
+        metadata: {
+          depth: 0,
+          confidence: 80
+        }
+      });
+    });
+
+    it('repairs malformed structured thoughts before exposing them to the client', () => {
+      const thoughts = normalizeStructuredThoughts([
+        { id: 'root', parent: null, text: ' Root ', category: 'analysis', weight: 150, confidence: -10 },
+        { id: 'child', parent: 'future', text: 'Forward parent', category: 'not-a-category', weight: -4, confidence: 'bad' },
+        { id: 'future', parent: 'child', text: 'Existing parent', category: 'SYNTHESIS', weight: 42.4, confidence: 87.6 }
+      ]);
+
+      expect(thoughts.map((thought: any) => thought.id)).toEqual([1, 2, 3]);
+      expect(thoughts.map((thought: any) => thought.parent)).toEqual([null, 1, 2]);
+      expect(thoughts.map((thought: any) => thought.category)).toEqual(['analysis', 'synthesis', 'synthesis']);
+      expect(thoughts.map((thought: any) => thought.weight)).toEqual([100, 0, 42]);
+      expect(thoughts.map((thought: any) => thought.metadata.confidence)).toEqual([0, 0, 88]);
+      expect(thoughts.map((thought: any) => thought.metadata.depth)).toEqual([0, 1, 2]);
     });
   });
 });
