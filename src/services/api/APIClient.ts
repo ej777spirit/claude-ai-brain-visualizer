@@ -6,6 +6,11 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { IAPIClient, APIResponse, AIModel, ThoughtNode, APIProvider } from '../../types';
 
+type APIClientError = Error & {
+  allowDemoFallback?: boolean;
+  status?: number;
+};
+
 export class APIClient implements IAPIClient {
   private client: AxiosInstance;
 
@@ -41,9 +46,14 @@ export class APIClient implements IAPIClient {
 
       return response.data;
     } catch (error) {
-      // Fallback to simulated response if API is unavailable
-      console.warn('API unavailable, using simulated response');
-      return this.generateSimulatedResponse(prompt, model);
+      const apiError = this.normalizeAPIError(error);
+      if (apiError.allowDemoFallback) {
+        // Fallback to simulated response if the local API proxy is unavailable
+        console.warn('API unavailable, using simulated response');
+        return this.generateSimulatedResponse(prompt, model);
+      }
+
+      throw apiError;
     }
   }
 
@@ -161,33 +171,60 @@ export class APIClient implements IAPIClient {
   /**
    * Handle API errors
    */
-  private handleAPIError(error: any): Error {
+  private handleAPIError(error: any): APIClientError {
     if (error.response) {
       // Server responded with error status
       const status = error.response.status;
-      const message = error.response.data?.message || error.message;
+      const message = this.extractErrorMessage(error);
 
       switch (status) {
         case 400:
-          return new Error(`Bad Request: ${message}`);
+          return this.createAPIError(`Bad Request: ${message}`, false, status);
         case 401:
-          return new Error('API Key invalid or missing');
+          return this.createAPIError(`API Key invalid or missing: ${message}`, false, status);
         case 403:
-          return new Error('API access forbidden');
+          return this.createAPIError(`API access forbidden: ${message}`, false, status);
         case 429:
-          return new Error('Rate limit exceeded. Please try again later.');
+          return this.createAPIError(`Rate limit exceeded. Please try again later. ${message}`, false, status);
         case 500:
-          return new Error('Server error. Please try again.');
+          return this.createAPIError(`Server error. Please try again. ${message}`, false, status);
         default:
-          return new Error(`API Error (${status}): ${message}`);
+          return this.createAPIError(`API Error (${status}): ${message}`, false, status);
       }
     } else if (error.request) {
       // Network error
-      return new Error('Network error. Please check your connection.');
+      return this.createAPIError('Network error. Please check your connection.', true);
     } else {
       // Other error
-      return new Error(error.message || 'Unknown API error');
+      return this.createAPIError(error.message || 'Unknown API error', true);
     }
+  }
+
+  private normalizeAPIError(error: any): APIClientError {
+    if (error instanceof Error && 'allowDemoFallback' in error) {
+      return error as APIClientError;
+    }
+
+    if (error?.response || error?.request) {
+      return this.handleAPIError(error);
+    }
+
+    return this.createAPIError(error?.message || 'Unknown API error', true);
+  }
+
+  private createAPIError(message: string, allowDemoFallback: boolean, status?: number): APIClientError {
+    const error = new Error(message) as APIClientError;
+    error.allowDemoFallback = allowDemoFallback;
+    if (status !== undefined) error.status = status;
+    return error;
+  }
+
+  private extractErrorMessage(error: any): string {
+    const data = error.response?.data;
+    if (typeof data?.message === 'string') return data.message;
+    if (typeof data?.error?.message === 'string') return data.error.message;
+    if (typeof data?.error === 'string') return data.error;
+    return error.message || 'Unknown API error';
   }
 
   /**

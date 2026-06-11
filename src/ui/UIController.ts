@@ -233,6 +233,7 @@ export class UIController implements IUIController {
 
     // Start thinking
     this.stateManager.dispatch({ type: 'THINKING_STARTED' });
+    let requestFailed = false;
 
     try {
       this.showLoading(true);
@@ -257,10 +258,16 @@ export class UIController implements IUIController {
       elements.exportBtn.disabled = false;
 
     } catch (error) {
+      requestFailed = true;
+      const message = this.formatErrorMessage(error);
       console.error('Error processing message:', error);
-      this.addMessage('Error processing request. Please try again.', 'system');
-    } finally {
       this.stateManager.setState({ isThinking: false });
+      this.updateStatus('API error', 'error');
+      this.addMessage(`API error: ${message}`, 'system');
+    } finally {
+      if (!requestFailed) {
+        this.stateManager.setState({ isThinking: false });
+      }
       elements.sendButton.disabled = false;
       this.showLoading(false);
     }
@@ -661,6 +668,12 @@ export class UIController implements IUIController {
     elements.statusText.textContent = text;
     const dot = elements.statusDot;
     dot.className = `status-dot ${status}`;
+  }
+
+  private formatErrorMessage(error: unknown): string {
+    if (error instanceof Error && error.message) return error.message;
+    if (typeof error === 'string' && error.trim()) return error;
+    return 'Unknown API error';
   }
 
   /**

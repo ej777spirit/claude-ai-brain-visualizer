@@ -6,6 +6,7 @@
 import net from 'net';
 import { EventEmitter } from 'events';
 import { TextDecoder, TextEncoder } from 'util';
+import axios from 'axios';
 
 Object.assign(global, { TextDecoder, TextEncoder });
 
@@ -19,6 +20,7 @@ delete process.env.MOONSHOT_API_KEY;
 const appModule = require('../../server/apiProxy');
 const app = appModule;
 const request = require('supertest');
+const mockAxios = axios as jest.Mocked<typeof axios>;
 const {
   extractStructuredThoughts,
   getApiPort,
@@ -45,6 +47,11 @@ describe('API Integration Tests', () => {
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.MOONSHOT_API_KEY;
+    mockAxios.post.mockReset();
   });
 
   it('does not bind a network port when imported by tests', async () => {
@@ -138,6 +145,47 @@ describe('API Integration Tests', () => {
         position: { x: 0, y: 0, z: 0 },
         connections: []
       });
+    });
+
+    it('surfaces configured provider authentication failures instead of simulating a response', async () => {
+      process.env.ANTHROPIC_API_KEY = 'bad-key';
+      mockAxios.post.mockRejectedValueOnce({
+        response: {
+          status: 401,
+          data: { error: { message: 'invalid x-api-key' } }
+        }
+      });
+
+      const response = await request(app)
+        .post('/api/generate')
+        .send({ prompt: 'Use the real provider', model: 'claude' })
+        .expect(401);
+
+      expect(response.body).toMatchObject({
+        error: 'Provider request failed',
+        provider: 'claude',
+        statusCode: 401
+      });
+      expect(response.body.message).toContain('invalid x-api-key');
+      expect(response.body.thoughts).toBeUndefined();
+      expect(response.body.metadata).toBeUndefined();
+    });
+
+    it('returns 502 when a configured provider fails without an HTTP status', async () => {
+      process.env.ANTHROPIC_API_KEY = 'bad-key';
+      mockAxios.post.mockRejectedValueOnce(new Error('provider network timeout'));
+
+      const response = await request(app)
+        .post('/api/generate')
+        .send({ prompt: 'Use the real provider', model: 'claude' })
+        .expect(502);
+
+      expect(response.body).toMatchObject({
+        error: 'Provider request failed',
+        provider: 'claude',
+        statusCode: 502
+      });
+      expect(response.body.message).toContain('provider network timeout');
     });
   });
 

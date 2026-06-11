@@ -103,29 +103,25 @@ describe('APIClient', () => {
       consoleWarnSpy.mockRestore();
     });
 
-    it('should handle server errors gracefully', async () => {
+    it('should reject server-surfaced provider errors instead of simulating a response', async () => {
       const serverError = {
         response: {
-          status: 500,
-          data: { message: 'Internal Server Error' }
+          status: 502,
+          data: { message: 'Claude provider failed: network timeout' }
         }
       };
       mockAxios.post.mockRejectedValueOnce(serverError);
 
       const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
 
-      const result = await apiClient.generateResponse(mockPrompt, mockModel);
-
-      expect(result).toHaveProperty('response');
-      expect(result).toHaveProperty('thoughts');
-      expect(result).toHaveProperty('model');
-      expect(result).toHaveProperty('confidence');
-      expect(consoleWarnSpy).toHaveBeenCalledWith('API unavailable, using simulated response');
+      await expect(apiClient.generateResponse(mockPrompt, mockModel))
+        .rejects.toThrow('Claude provider failed: network timeout');
+      expect(consoleWarnSpy).not.toHaveBeenCalled();
 
       consoleWarnSpy.mockRestore();
     });
 
-    it('should handle rate limiting gracefully', async () => {
+    it('should reject provider rate limits instead of simulating a response', async () => {
       const rateLimitError = {
         response: {
           status: 429,
@@ -136,13 +132,9 @@ describe('APIClient', () => {
 
       const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
 
-      const result = await apiClient.generateResponse(mockPrompt, mockModel);
-
-      expect(result).toHaveProperty('response');
-      expect(result).toHaveProperty('thoughts');
-      expect(result).toHaveProperty('model');
-      expect(result).toHaveProperty('confidence');
-      expect(consoleWarnSpy).toHaveBeenCalledWith('API unavailable, using simulated response');
+      await expect(apiClient.generateResponse(mockPrompt, mockModel))
+        .rejects.toThrow('Rate limit exceeded');
+      expect(consoleWarnSpy).not.toHaveBeenCalled();
 
       consoleWarnSpy.mockRestore();
     });

@@ -14,6 +14,10 @@ describe('UIController Integration', () => {
   let visualizationManager: VisualizationManager;
 
   beforeEach(() => {
+    jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
     // Setup DOM elements
     document.body.innerHTML = `
       <div id="app">
@@ -102,7 +106,7 @@ describe('UIController Integration', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
-    jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
   describe('initialization', () => {
@@ -196,6 +200,31 @@ describe('UIController Integration', () => {
 
       const chatContainer = document.getElementById('chatContainer')!;
       expect(chatContainer.innerHTML).toContain('Test message');
+    });
+
+    it('should surface API errors without creating a fake graph', async () => {
+      const userInput = document.getElementById('userInput') as HTMLInputElement;
+      const sendButton = document.getElementById('sendButton') as HTMLButtonElement;
+      const statusDot = document.getElementById('statusDot')!;
+      const statusText = document.getElementById('statusText')!;
+      const chatContainer = document.getElementById('chatContainer')!;
+      const createVisualizationSpy = jest.spyOn(visualizationManager, 'createVisualization');
+
+      jest
+        .spyOn(apiClient, 'generateResponse')
+        .mockRejectedValueOnce(new Error('401 invalid API key'));
+
+      userInput.value = 'Real provider request';
+      sendButton.click();
+      await (global as any).testUtils.waitFor(0);
+      await (global as any).testUtils.waitFor(0);
+
+      expect(createVisualizationSpy).not.toHaveBeenCalled();
+      expect(statusDot.classList.contains('error')).toBe(true);
+      expect(statusText.textContent).toContain('API error');
+      expect(chatContainer.textContent).toContain('401 invalid API key');
+      expect(stateManager.getState().responseHistory).toHaveLength(0);
+      expect(stateManager.getState().knowledgeGraph.nodes).toHaveLength(0);
     });
   });
 

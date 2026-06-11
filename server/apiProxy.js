@@ -108,8 +108,13 @@ app.post('/api/generate', async (req, res) => {
   } catch (error) {
     console.error('API Error:', error);
 
-    // Return simulated response if API fails
-    res.json(generateSimulatedResponse(req.body.prompt, req.body.model));
+    if (isProviderNotConfigured(error)) {
+      res.json(generateSimulatedResponse(req.body.prompt, req.body.model));
+      return;
+    }
+
+    const providerError = formatProviderError(error, req.body.model);
+    res.status(providerError.statusCode).json(providerError);
   }
 });
 
@@ -219,6 +224,35 @@ function shapeProviderResponse(content, model, displayName, metadata) {
       // 'model' = reasoning reported by the model itself; 'derived' = built from sentences
       thoughtSource: structured ? 'model' : 'derived'
     }
+  };
+}
+
+function isProviderNotConfigured(error) {
+  return /_API_KEY not configured/.test(String(error?.message || ''));
+}
+
+function providerMessageFrom(error) {
+  const data = error?.response?.data;
+  if (typeof data?.error?.message === 'string') return data.error.message;
+  if (typeof data?.error === 'string') return data.error;
+  if (typeof data?.message === 'string') return data.message;
+  if (typeof error?.message === 'string') return error.message;
+  return 'Provider request failed';
+}
+
+function formatProviderError(error, model) {
+  const rawStatus = Number(error?.response?.status);
+  const statusCode = Number.isInteger(rawStatus) && rawStatus >= 400 && rawStatus <= 599
+    ? rawStatus
+    : 502;
+  const cause = providerMessageFrom(error);
+
+  return {
+    error: 'Provider request failed',
+    message: `${String(model || 'AI')} provider request failed: ${cause}`,
+    cause,
+    provider: model || 'unknown',
+    statusCode
   };
 }
 
@@ -434,7 +468,9 @@ module.exports.testables = {
   normalizeStructuredThoughts,
   generateThoughtsFromResponse,
   getApiPort,
-  startServer
+  startServer,
+  isProviderNotConfigured,
+  formatProviderError
 };
 // Moonshot Kimi API integration
 async function callKimiAPI(prompt) {
