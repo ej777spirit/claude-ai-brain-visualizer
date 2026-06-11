@@ -2,6 +2,8 @@
 
 This folder contains comprehensive project documentation designed for import into Linear as a project folder.
 
+> **Linear project name**: `AI Super Brain Visualizer`
+
 ---
 
 ## Document Structure
@@ -26,7 +28,8 @@ This folder contains comprehensive project documentation designed for import int
 
 1. Open Linear workspace
 2. Navigate to Projects
-3. Create new project: "AI Brain Visualizer Pro"
+3. Create new project: **"AI Super Brain Visualizer"**
+   (Linear project folder name — the codebase/app itself remains "AI Brain Visualizer Pro")
 4. Set project lead, team, and dates
 
 ### 2. Add Project Documents
