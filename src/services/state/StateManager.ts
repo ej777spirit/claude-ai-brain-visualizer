@@ -3,7 +3,7 @@
  * @module services/state/StateManager
  */
 
-import { AppState, StateEvent, IStateManager, DeepPartial } from '../../types';
+import { AppState, StateEvent, IStateManager, DeepPartial, ThoughtNode } from '../../types';
 
 export class StateManager implements IStateManager {
   private state: AppState;
@@ -63,13 +63,21 @@ export class StateManager implements IStateManager {
       case 'THINKING_STARTED':
         this.setState({ isThinking: true });
         break;
-      case 'THINKING_FINISHED':
+      case 'THINKING_FINISHED': {
+        // Populate the knowledge graph so stats, save and export reflect the response
+        const thoughts: ThoughtNode[] = event.payload.thoughts ?? [];
         this.setState({
           isThinking: false,
           responseHistory: [...this.state.responseHistory, event.payload],
-          currentResponseIndex: this.state.responseHistory.length
+          currentResponseIndex: this.state.responseHistory.length,
+          knowledgeGraph: {
+            ...this.state.knowledgeGraph,
+            nodes: thoughts,
+            nodeMap: new Map(thoughts.map((t): [number, ThoughtNode] => [t.id, t]))
+          }
         });
         break;
+      }
       case 'UI_TOGGLED':
         const uiKey = event.payload;
         this.setState({
@@ -179,7 +187,7 @@ export class StateManager implements IStateManager {
         return { __type: 'Map', value: Array.from(value.entries()) };
       }
       if (value instanceof Set) {
-        return { __type: 'Set', value: Array.from(value.entries()) };
+        return { __type: 'Set', value: Array.from(value) };
       }
       return value;
     });

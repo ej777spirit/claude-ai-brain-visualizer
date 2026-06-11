@@ -46,9 +46,9 @@ app.get('/api/models', (req, res) => {
   res.json({
     models: ['claude', 'gemini', 'gpt', 'kimi'],
     providers: {
-      claude: { name: 'Anthropic Claude', models: ['claude-3-opus', 'claude-3-sonnet'] },
-      gemini: { name: 'Google Gemini', models: ['gemini-pro', 'gemini-pro-vision'] },
-      gpt: { name: 'OpenAI GPT', models: ['gpt-4', 'gpt-3.5-turbo'] },
+      claude: { name: 'Anthropic Claude', models: ['claude-sonnet-4-6', 'claude-opus-4-8'] },
+      gemini: { name: 'Google Gemini', models: ['gemini-2.0-flash'] },
+      gpt: { name: 'OpenAI GPT', models: ['gpt-4o', 'gpt-4o-mini'] },
       kimi: { name: 'Moonshot Kimi', models: ['moonshot-v1-128k'] }
     }
   });
@@ -114,7 +114,7 @@ async function callClaudeAPI(prompt) {
   }
 
   const response = await axios.post('https://api.anthropic.com/v1/messages', {
-    model: 'claude-3-sonnet-20240229',
+    model: 'claude-sonnet-4-6',
     max_tokens: 1000,
     messages: [{
       role: 'user',
@@ -134,8 +134,7 @@ async function callClaudeAPI(prompt) {
   return {
     response: content,
     thoughts,
-    model: 'Claude 3',
-    confidence: Math.floor(Math.random() * 20) + 80,
+    model: 'Claude',
     metadata: {
       tokensUsed: response.data.usage?.input_tokens + response.data.usage?.output_tokens || 0,
       modelVersion: response.data.model
@@ -151,7 +150,7 @@ async function callGeminiAPI(prompt) {
     throw new Error('GOOGLE_API_KEY not configured');
   }
 
-  const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+  const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
     contents: [{
       parts: [{
         text: prompt
@@ -165,11 +164,10 @@ async function callGeminiAPI(prompt) {
   return {
     response: content,
     thoughts,
-    model: 'Gemini Pro',
-    confidence: Math.floor(Math.random() * 20) + 80,
+    model: 'Gemini',
     metadata: {
-      tokensUsed: 0, // Gemini doesn't provide token counts
-      modelVersion: 'gemini-pro'
+      tokensUsed: response.data.usageMetadata?.totalTokenCount || 0,
+      modelVersion: 'gemini-2.0-flash'
     }
   };
 }
@@ -183,7 +181,7 @@ async function callOpenAIAPI(prompt) {
   }
 
   const response = await axios.post('https://api.openai.com/v1/chat/completions', {
-    model: 'gpt-4',
+    model: 'gpt-4o',
     messages: [{
       role: 'user',
       content: prompt
@@ -202,8 +200,7 @@ async function callOpenAIAPI(prompt) {
   return {
     response: content,
     thoughts,
-    model: 'GPT-4',
-    confidence: Math.floor(Math.random() * 20) + 80,
+    model: 'GPT-4o',
     metadata: {
       tokensUsed: response.data.usage?.total_tokens || 0,
       modelVersion: response.data.model
@@ -211,59 +208,29 @@ async function callOpenAIAPI(prompt) {
   };
 }
 
-// Generate thought nodes from AI response
+// Generate thought nodes derived from the actual AI response content
 function generateThoughtsFromResponse(response, model) {
-  const thoughts = [];
   const categories = ['analysis', 'synthesis', 'recall', 'evaluation'];
-  const numThoughts = 8 + Math.floor(Math.random() * 7);
-
-  for (let i = 0; i < numThoughts; i++) {
-    thoughts.push({
-      id: i + 1,
-      parent: i > 0 && Math.random() > 0.4 ? Math.floor(Math.random() * i) + 1 : null,
-      text: `${model === 'claude' ? 'Claude analyzes' : model === 'gemini' ? 'Gemini processes' : model === 'gpt' ? 'GPT evaluates' : 'Kimi reasons'}: ${getThoughtText(response, i)}`,
-      category: categories[Math.floor(Math.random() * categories.length)],
-      weight: Math.floor(Math.random() * 40) + 60,
-      position: { x: 0, y: 0, z: 0 }, // Will be set by visualization
-      connections: [],
-      metadata: {
-        depth: 0,
-        branchId: `branch-${i}`,
-        timestamp: Date.now(),
-        confidence: Math.floor(Math.random() * 30) + 70
-      }
-    });
-  }
-
-  return thoughts;
-}
-
-// Generate simulated response when APIs are unavailable
-function generateSimulatedResponse(prompt, model) {
-  const thoughts = generateThoughtsFromResponse(prompt, model);
-
-  const responses = {
-    claude: `As Claude, I've analyzed your query "${prompt}" through multiple cognitive pathways. The visualization shows my thought process involving contextual understanding, pattern recognition, and logical synthesis.`,
-    gemini: `Through Gemini's advanced processing, I've examined "${prompt}" using parallel analysis streams. The 3D visualization demonstrates how I connect different knowledge domains.`,
-    gpt: `GPT-4's analysis of "${prompt}" involves deep transformer-based reasoning. The thought graph illustrates how attention mechanisms focus on relevant concepts.`,
-    kimi: `Using Kimi K2.5's advanced reasoning capabilities, I've processed "${prompt}" through deep contextual analysis. The visualization reveals my multi-layered thinking process combining semantic understanding with logical inference.`
+  const verbs = {
+    claude: 'Claude analyzes',
+    gemini: 'Gemini processes',
+    gpt: 'GPT evaluates',
+    kimi: 'Kimi reasons'
   };
+  const verb = verbs[model] || verbs.claude;
 
-  return {
-    response: responses[model] || responses.claude,
-    thoughts,
-    model: model.toUpperCase(),
-    confidence: Math.floor(Math.random() * 20) + 80,
-    metadata: {
-      processingTime: 1500 + Math.random() * 1000,
-      tokensUsed: Math.floor(Math.random() * 1000) + 500,
-      modelVersion: 'simulated'
-    }
-  };
-}
+  // Each node reflects a sentence of the real response, so the graph
+  // visualizes the response content rather than random noise
+  const sentences = String(response || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(/(?<=[.!?])\s+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 3)
+    .slice(0, 15);
 
-// Get thought text based on response and index
-function getThoughtText(response, index) {
+  // Pad short responses with generic reasoning aspects so the graph stays readable
   const aspects = [
     'contextual understanding',
     'semantic relationships',
@@ -274,7 +241,57 @@ function getThoughtText(response, index) {
     'causal inference',
     'conceptual mapping'
   ];
-  return aspects[index % aspects.length] + ' of the response content';
+  while (sentences.length < 8) {
+    sentences.push(aspects[sentences.length % aspects.length] + ' of the response');
+  }
+
+  return sentences.map((sentence, i) => {
+    const excerpt = sentence.length > 80 ? sentence.slice(0, 77) + '...' : sentence;
+    // Weight scales with how much content the sentence carries
+    const weight = Math.min(100, 50 + Math.round(Math.min(sentence.length, 200) / 4));
+    return {
+      id: i + 1,
+      // Binary-tree hierarchy keeps the layout deterministic for the same response
+      parent: i === 0 ? null : Math.floor((i - 1) / 2) + 1,
+      text: `${verb}: ${excerpt}`,
+      category: categories[i % categories.length],
+      weight,
+      position: { x: 0, y: 0, z: 0 }, // Will be set by visualization
+      connections: [],
+      metadata: {
+        depth: i === 0 ? 0 : Math.floor(Math.log2(i + 1)),
+        branchId: `branch-${i}`,
+        timestamp: Date.now(),
+        confidence: weight
+      }
+    };
+  });
+}
+
+// Generate simulated response when APIs are unavailable
+function generateSimulatedResponse(prompt, model) {
+  const responses = {
+    claude: `As Claude, I've analyzed your query "${prompt}" through multiple cognitive pathways. The visualization shows my thought process involving contextual understanding, pattern recognition, and logical synthesis.`,
+    gemini: `Through Gemini's advanced processing, I've examined "${prompt}" using parallel analysis streams. The 3D visualization demonstrates how I connect different knowledge domains.`,
+    gpt: `GPT-4's analysis of "${prompt}" involves deep transformer-based reasoning. The thought graph illustrates how attention mechanisms focus on relevant concepts.`,
+    kimi: `Using Kimi K2.5's advanced reasoning capabilities, I've processed "${prompt}" through deep contextual analysis. The visualization reveals my multi-layered thinking process combining semantic understanding with logical inference.`
+  };
+
+  const responseText = responses[model] || responses.claude;
+
+  return {
+    response: responseText,
+    thoughts: generateThoughtsFromResponse(responseText, model),
+    model: model ? model.toUpperCase() : 'CLAUDE',
+    confidence: Math.floor(Math.random() * 20) + 80,
+    metadata: {
+      processingTime: 1500 + Math.random() * 1000,
+      tokensUsed: 0,
+      modelVersion: 'simulated',
+      // Always flag fallbacks so the client can show the demo-mode banner
+      isSimulated: true
+    }
+  };
 }
 
 // Error handling middleware
@@ -324,7 +341,6 @@ async function callKimiAPI(prompt) {
     response: content,
     thoughts,
     model: 'Kimi K2.5',
-    confidence: Math.floor(Math.random() * 20) + 80,
     metadata: {
       tokensUsed: response.data.usage?.total_tokens || 0,
       modelVersion: response.data.model

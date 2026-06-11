@@ -212,6 +212,8 @@ export class UIController implements IUIController {
     this.stateManager.dispatch({ type: 'THINKING_STARTED' });
 
     try {
+      this.showLoading(true);
+
       // Get AI response
       const state = this.stateManager.getState();
       const response = await this.apiClient.generateResponse(message, state.currentModel);
@@ -219,8 +221,9 @@ export class UIController implements IUIController {
       // Update visualization
       this.visualizationManager.createVisualization(response.thoughts);
 
-      // Update response display
+      // Update response display and statistics
       this.updateResponseDisplay(response);
+      this.updateStats(response.thoughts);
 
       // Finish thinking
       this.stateManager.dispatch({ type: 'THINKING_FINISHED', payload: response });
@@ -235,6 +238,7 @@ export class UIController implements IUIController {
     } finally {
       this.stateManager.setState({ isThinking: false });
       elements.sendButton.disabled = false;
+      this.showLoading(false);
     }
   }
 
@@ -350,14 +354,24 @@ export class UIController implements IUIController {
 
     const isSimulated = response.metadata?.isSimulated;
     const modelDisplay = isSimulated ? `${response.model} (Demo Mode)` : response.model;
-    const confidenceDisplay = isSimulated ? `${response.confidence}% (simulated)` : `${response.confidence}% confidence`;
 
-    content.innerHTML = `
-      <div style="margin-bottom: 10px; color: var(--primary-accent); font-weight: 600;">
-        ${modelDisplay} Analysis (${confidenceDisplay})
-      </div>
-      <div>${response.response}</div>
-    `;
+    let headerText = `${modelDisplay} Analysis`;
+    if (typeof response.confidence === 'number') {
+      headerText += isSimulated
+        ? ` (${response.confidence}% simulated)`
+        : ` (${response.confidence}% confidence)`;
+    }
+
+    const header = document.createElement('div');
+    header.style.cssText = 'margin-bottom: 10px; color: var(--primary-accent); font-weight: 600;';
+    header.textContent = headerText;
+
+    // textContent keeps prompt echoes and model output from executing as HTML
+    const body = document.createElement('div');
+    body.style.whiteSpace = 'pre-wrap';
+    body.textContent = response.response;
+
+    content.replaceChildren(header, body);
   }
 
   /**

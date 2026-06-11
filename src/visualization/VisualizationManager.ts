@@ -31,7 +31,12 @@ export class VisualizationManager implements IVisualizationManager {
   private lines: THREE.Line[] = [];
   private connectionData: ConnectionData[] = [];
   private disposables: Set<{ dispose: () => void }> = new Set();
+  // Scene-lifetime resources (lights, central sphere) - freed only in dispose(),
+  // never in clearScene(), so repeated visualizations don't stack lights/spheres
+  private sceneDisposables: Set<{ dispose: () => void }> = new Set();
+  private sceneObjects: THREE.Object3D[] = [];
   private centralSphere: THREE.Mesh | null = null;
+  private resizeHandler = (): void => this.handleResize();
 
   private animationId: number | null = null;
   private isInitialized = false;
@@ -125,7 +130,6 @@ export class VisualizationManager implements IVisualizationManager {
     // Ambient light
     const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
     this.scene.add(ambientLight);
-    this.disposables.add(ambientLight);
 
     // Directional light
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
@@ -134,20 +138,23 @@ export class VisualizationManager implements IVisualizationManager {
     directionalLight.shadow.mapSize.width = 2048;
     directionalLight.shadow.mapSize.height = 2048;
     this.scene.add(directionalLight);
-    this.disposables.add(directionalLight);
 
     // Point light for accent
     const pointLight = new THREE.PointLight(CONFIG.THOUGHT_CATEGORIES.analysis.color, 0.5, 100);
     pointLight.position.set(0, 20, 0);
     this.scene.add(pointLight);
-    this.disposables.add(pointLight);
+
+    this.sceneObjects.push(ambientLight, directionalLight, pointLight);
+    this.sceneDisposables.add(ambientLight);
+    this.sceneDisposables.add(directionalLight);
+    this.sceneDisposables.add(pointLight);
   }
 
   /**
    * Create central sphere
    */
   private createCentralSphere(): void {
-    if (!this.scene) return;
+    if (!this.scene || this.centralSphere) return;
 
     const geometry = new THREE.SphereGeometry(2, 32, 32);
     const material = new THREE.MeshPhysicalMaterial({
@@ -161,15 +168,16 @@ export class VisualizationManager implements IVisualizationManager {
     this.centralSphere = new THREE.Mesh(geometry, material);
     this.scene.add(this.centralSphere);
 
-    this.disposables.add(geometry);
-    this.disposables.add(material);
+    this.sceneObjects.push(this.centralSphere);
+    this.sceneDisposables.add(geometry);
+    this.sceneDisposables.add(material);
   }
 
   /**
    * Setup event listeners
    */
   private setupEventListeners(): void {
-    window.addEventListener('resize', () => this.handleResize());
+    window.addEventListener('resize', this.resizeHandler);
   }
 
   /**
@@ -304,11 +312,12 @@ export class VisualizationManager implements IVisualizationManager {
       const node = nodeMap.get(thought.id);
       if (!node) return;
 
-      // Position based on hierarchical level and randomness
+      // Position based on hierarchical level with deterministic jitter,
+      // so the same thought graph always produces the same layout
       const level = this.getNodeLevel(thought, thoughts);
       const angle = (index / thoughts.length) * Math.PI * 2;
-      const radius = 15 + level * 10 + Math.random() * 5;
-      const height = (Math.random() - 0.5) * 20;
+      const radius = 15 + level * 10 + this.seededOffset(thought.id) * 5;
+      const height = (this.seededOffset(thought.id + 7919) - 0.5) * 20;
 
       node.position.set(
         Math.cos(angle) * radius,
@@ -323,6 +332,14 @@ export class VisualizationManager implements IVisualizationManager {
       // Update thought position
       thought.position = node.position.clone() as any;
     });
+  }
+
+  /**
+   * Deterministic pseudo-random value in [0, 1) derived from a seed
+   */
+  private seededOffset(seed: number): number {
+    const x = Math.sin(seed * 12.9898) * 43758.5453;
+    return x - Math.floor(x);
   }
 
   /**
@@ -437,10 +454,6 @@ export class VisualizationManager implements IVisualizationManager {
     this.connectionData = [];
     this.disposables.clear();
     this.nodeBasePositions.clear();
-    
-    // Re-create central sphere and lighting after clear
-    this.setupLighting();
-    this.createCentralSphere();
   }
 
   /**
@@ -510,6 +523,16 @@ export class VisualizationManager implements IVisualizationManager {
 
     this.clearScene();
 
+    window.removeEventListener('resize', this.resizeHandler);
+
+    if (this.scene) {
+      this.sceneObjects.forEach(obj => this.scene!.remove(obj));
+    }
+    this.sceneObjects = [];
+    this.sceneDisposables.forEach(disposable => disposable.dispose());
+    this.sceneDisposables.clear();
+    this.centralSphere = null;
+
     if (this.controls) {
       this.controls.dispose();
     }
@@ -522,9 +545,13 @@ export class VisualizationManager implements IVisualizationManager {
   }
 
   /**
-   * Get memory usage estimate
+   * Get memory usage in MB (real heap usage where the browser exposes it)
    */
   getMemoryUsage(): number {
+    const perfMemory = (performance as any).memory;
+    if (perfMemory?.usedJSHeapSize) {
+      return perfMemory.usedJSHeapSize / (1024 * 1024);
+    }
     return (this.nodes.length * 0.1 + this.lines.length * 0.05);
   }
 }

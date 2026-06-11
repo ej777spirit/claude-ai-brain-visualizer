@@ -99,22 +99,25 @@ export class APIClient implements IAPIClient {
   private generateThoughts(prompt: string, model: AIModel): ThoughtNode[] {
     const categories = ['analysis', 'synthesis', 'recall', 'evaluation'] as const;
     const thoughts: ThoughtNode[] = [];
-    const numThoughts = 8 + Math.floor(Math.random() * 7);
+    // Deterministic per prompt so the same question always yields the same graph
+    const numThoughts = 8 + (prompt.length % 7);
 
     for (let i = 0; i < numThoughts; i++) {
+      const weight = 60 + ((i * 17 + prompt.length) % 40);
       thoughts.push({
         id: i + 1,
-        parent: i > 0 && Math.random() > 0.4 ? Math.floor(Math.random() * i) + 1 : undefined,
+        // Binary-tree hierarchy keeps the layout stable and connected
+        parent: i === 0 ? undefined : Math.floor((i - 1) / 2) + 1,
         text: `${model === 'claude' ? 'Claude analyzes' : model === 'gemini' ? 'Gemini processes' : model === 'gpt' ? 'GPT evaluates' : 'Kimi reasons'}: ${this.getThoughtText(prompt, i)}`,
-        category: categories[Math.floor(Math.random() * categories.length)],
-        weight: Math.floor(Math.random() * 40) + 60,
+        category: categories[i % categories.length],
+        weight,
         position: { x: 0, y: 0, z: 0 } as any, // Will be set by visualization
         connections: [],
         metadata: {
-          depth: 0,
+          depth: i === 0 ? 0 : Math.floor(Math.log2(i + 1)),
           branchId: `branch-${i}`,
           timestamp: Date.now(),
-          confidence: Math.floor(Math.random() * 30) + 70
+          confidence: weight
         }
       });
     }
@@ -126,11 +129,14 @@ export class APIClient implements IAPIClient {
    * Generate contextual response text
    */
   private generateContextualResponse(prompt: string, model: AIModel): string {
+    // Plain text only: the UI renders responses with textContent to prevent
+    // prompt echoes or model output from being interpreted as HTML
+    const footer = 'This is a simulated response for demonstration purposes. Configure API keys to get real AI responses.';
     const responses = {
-      claude: `⚠️ <strong>DEMO MODE - SIMULATED RESPONSE</strong><br><br>As Claude, I've analyzed your query "${prompt}" through multiple cognitive pathways. The visualization shows my thought process involving contextual understanding, pattern recognition, and logical synthesis. Each node represents a concept or reasoning step, with connections showing how ideas relate and build upon each other.<br><br><em>This is a simulated response for demonstration purposes. Configure API keys to get real AI responses.</em>`,
-      gemini: `⚠️ <strong>DEMO MODE - SIMULATED RESPONSE</strong><br><br>Through Gemini's advanced processing, I've examined "${prompt}" using parallel analysis streams. The 3D visualization demonstrates how I connect different knowledge domains, evaluate multiple perspectives, and synthesize information into a coherent response.<br><br><em>This is a simulated response for demonstration purposes. Configure API keys to get real AI responses.</em>`,
-      gpt: `⚠️ <strong>DEMO MODE - SIMULATED RESPONSE</strong><br><br>GPT-4's analysis of "${prompt}" involves deep transformer-based reasoning. The thought graph illustrates how attention mechanisms focus on relevant concepts, building layers of understanding that culminate in this comprehensive response.<br><br><em>This is a simulated response for demonstration purposes. Configure API keys to get real AI responses.</em>`,
-      kimi: `⚠️ <strong>DEMO MODE - SIMULATED RESPONSE</strong><br><br>Using Kimi K2.5's advanced reasoning capabilities, I've processed "${prompt}" through deep contextual analysis. The visualization reveals my multi-layered thinking process, combining semantic understanding with logical inference to construct a comprehensive response.<br><br><em>This is a simulated response for demonstration purposes. Configure API keys to get real AI responses.</em>`
+      claude: `⚠️ DEMO MODE - SIMULATED RESPONSE\n\nAs Claude, I've analyzed your query "${prompt}" through multiple cognitive pathways. The visualization shows my thought process involving contextual understanding, pattern recognition, and logical synthesis. Each node represents a concept or reasoning step, with connections showing how ideas relate and build upon each other.\n\n${footer}`,
+      gemini: `⚠️ DEMO MODE - SIMULATED RESPONSE\n\nThrough Gemini's advanced processing, I've examined "${prompt}" using parallel analysis streams. The 3D visualization demonstrates how I connect different knowledge domains, evaluate multiple perspectives, and synthesize information into a coherent response.\n\n${footer}`,
+      gpt: `⚠️ DEMO MODE - SIMULATED RESPONSE\n\nGPT-4's analysis of "${prompt}" involves deep transformer-based reasoning. The thought graph illustrates how attention mechanisms focus on relevant concepts, building layers of understanding that culminate in this comprehensive response.\n\n${footer}`,
+      kimi: `⚠️ DEMO MODE - SIMULATED RESPONSE\n\nUsing Kimi K2.5's advanced reasoning capabilities, I've processed "${prompt}" through deep contextual analysis. The visualization reveals my multi-layered thinking process, combining semantic understanding with logical inference to construct a comprehensive response.\n\n${footer}`
     };
     return responses[model] || responses.claude;
   }

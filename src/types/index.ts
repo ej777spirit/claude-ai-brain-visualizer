@@ -57,7 +57,9 @@ export interface APIResponse {
   response: string;
   thoughts: ThoughtNode[];
   model: string;
-  confidence: number;
+  // Absent for real API responses (providers don't report confidence);
+  // simulated responses include a labeled demo value
+  confidence?: number;
   metadata: {
     processingTime: number;
     tokensUsed: number;
