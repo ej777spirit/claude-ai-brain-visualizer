@@ -659,6 +659,8 @@ body {
 }
 
 .chain-item-text {
+  /* min-width: 0 lets this flex child shrink so the ellipsis can engage */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -69,7 +69,11 @@ Visit the project URL printed at the end. Recommended follow-ups:
 
 ## Re-running
 
-The script is **not idempotent** by default — re-running will create a second project, duplicate milestones, and duplicate issues. Labels are skipped if they already exist on the team.
+The script is **partially idempotent**:
+
+- The project is reused by name (no second project is created)
+- Labels are reused if they already exist anywhere in the workspace (matched case-insensitively, so a workspace-level "Feature" satisfies "feature")
+- Milestones, documents, and issues are **not** deduplicated — re-running adds duplicates *into the existing project*
 
 To re-import cleanly, delete the project in Linear first, then run again.
 

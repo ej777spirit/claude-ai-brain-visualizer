@@ -135,25 +135,41 @@ state_id_for() {
   echo "$id"
 }
 
-# ---------- 3. Create project ----------
+# ---------- 3. Create project (idempotent: reuse by name, mirrors the .mjs importer) ----------
 echo "Creating project..."
-project_input="$(jq -nc \
-  --arg n "$PROJECT_NAME" \
-  --arg d "$PROJECT_DESCRIPTION" \
-  --arg t "$team_id" \
-  --arg l "$viewer_id" \
-  '{name:$n, description:$d, teamIds:[$t], leadId:$l}')"
-project_resp="$(gql 'mutation($input: ProjectCreateInput!) { projectCreate(input: $input) { success project { id name url } } }' \
-  "$(jq -nc --argjson i "$project_input" '{input:$i}')")"
-project_id="$(echo "$project_resp" | jq -r '.projectCreate.project.id')"
-project_url="$(echo "$project_resp" | jq -r '.projectCreate.project.url')"
+existing_project="$(gql 'query($name: String!) { projects(filter: { name: { eq: $name } }, first: 10) { nodes { id name url } } }' \
+  "$(jq -nc --arg n "$PROJECT_NAME" '{name:$n}')")"
+project_id="$(echo "$existing_project" | jq -r '.projects.nodes[0].id // empty')"
+project_url="$(echo "$existing_project" | jq -r '.projects.nodes[0].url // empty')"
+if [[ -n "$project_id" ]]; then
+  echo "  • reusing existing project (skipping create)"
+else
+  project_input="$(jq -nc \
+    --arg n "$PROJECT_NAME" \
+    --arg d "$PROJECT_DESCRIPTION" \
+    --arg t "$team_id" \
+    --arg l "$viewer_id" \
+    '{name:$n, description:$d, teamIds:[$t], leadId:$l}')"
+  project_resp="$(gql 'mutation($input: ProjectCreateInput!) { projectCreate(input: $input) { success project { id name url } } }' \
+    "$(jq -nc --argjson i "$project_input" '{input:$i}')")"
+  project_id="$(echo "$project_resp" | jq -r '.projectCreate.project.id')"
+  project_url="$(echo "$project_resp" | jq -r '.projectCreate.project.url')"
+fi
 echo "  ✓ $PROJECT_NAME → $project_url"
 echo
 
 # ---------- 4. Create / reuse labels ----------
+# Labels can exist at the workspace level (not just team-scoped) and with
+# different casing (e.g. "Feature") — match workspace-wide and
+# case-insensitively, with a duplicate fallback (mirrors the .mjs importer)
 echo "Creating labels..."
-existing_labels="$(gql 'query($teamId: ID!) { issueLabels(filter: { team: { id: { eq: $teamId } } }) { nodes { id name } } }' \
-  "$(jq -nc --arg id "$team_id" '{teamId:$id}')")"
+existing_labels="$(gql 'query { issueLabels(first: 250) { nodes { id name } } }')"
+
+# label_id_for <name> <labels-json>: case-insensitive id lookup
+label_id_for() {
+  echo "$2" | jq -r --arg n "$1" \
+    '.issueLabels.nodes[] | select((.name | ascii_downcase) == ($n | ascii_downcase)) | .id' | head -1
+}
 
 declare -A LABEL_IDS=()
 declare -a LABEL_LIST=(
@@ -169,16 +185,28 @@ declare -a LABEL_LIST=(
 for entry in "${LABEL_LIST[@]}"; do
   name="${entry%%:*}"
   color="${entry##*:}"
-  existing_id="$(echo "$existing_labels" | jq -r --arg n "$name" '.issueLabels.nodes[] | select(.name==$n) | .id' | head -1)"
+  existing_id="$(label_id_for "$name" "$existing_labels")"
   if [[ -n "$existing_id" ]]; then
     LABEL_IDS[$name]="$existing_id"
     echo "  • $name (exists)"
     continue
   fi
-  resp="$(gql 'mutation($input: IssueLabelCreateInput!) { issueLabelCreate(input: $input) { success issueLabel { id name } } }' \
-    "$(jq -nc --arg n "$name" --arg c "$color" --arg t "$team_id" '{input:{name:$n, color:$c, teamId:$t}}')")"
-  LABEL_IDS[$name]="$(echo "$resp" | jq -r '.issueLabelCreate.issueLabel.id')"
-  echo "  ✓ $name"
+  # gql runs in a subshell, so its exit 1 lands here as a falsy condition
+  # instead of killing the script — refetch and reuse on duplicate collisions
+  if resp="$(gql 'mutation($input: IssueLabelCreateInput!) { issueLabelCreate(input: $input) { success issueLabel { id name } } }' \
+    "$(jq -nc --arg n "$name" --arg c "$color" --arg t "$team_id" '{input:{name:$n, color:$c, teamId:$t}}')")"; then
+    LABEL_IDS[$name]="$(echo "$resp" | jq -r '.issueLabelCreate.issueLabel.id')"
+    echo "  ✓ $name"
+  else
+    refetched_labels="$(gql 'query { issueLabels(first: 250) { nodes { id name } } }')"
+    fallback_id="$(label_id_for "$name" "$refetched_labels")"
+    if [[ -z "$fallback_id" ]]; then
+      echo "ERROR: could not create or find label \"$name\"" >&2
+      exit 1
+    fi
+    LABEL_IDS[$name]="$fallback_id"
+    echo "  • $name (reused after duplicate collision)"
+  fi
 done
 echo
 
