@@ -49,6 +49,8 @@ describe('UIController Integration', () => {
             <span id="maxDepth">0</span>
             <span id="activeNodes">0</span>
             <span id="categoryBreakdown">No thoughts</span>
+            <div id="metricsContent"></div>
+            <div id="nodeDetails"></div>
           </div>
           <div id="perfStats">
             FPS: <span id="fps">60</span> |
@@ -277,6 +279,91 @@ describe('UIController Integration', () => {
       expect(fps).toBeDefined();
       expect(nodeCount).toBeDefined();
       expect(memUsage).toBeDefined();
+    });
+  });
+
+  describe('chain of thought panel', () => {
+    const makeThought = (id: number, parent: number | undefined, text: string): any => ({
+      id,
+      parent,
+      text,
+      category: 'analysis',
+      weight: 70,
+      position: { x: 0, y: 0, z: 0 },
+      connections: [],
+      metadata: { depth: 0, branchId: `branch-${id}`, timestamp: 0, confidence: 70 }
+    });
+
+    // Tree: 1 ← {2, 3}; 2 ← {4, 5}
+    const thoughts = [
+      makeThought(1, undefined, 'root thought'),
+      makeThought(2, 1, 'first expansion'),
+      makeThought(3, 1, 'second expansion'),
+      makeThought(4, 2, 'deep dive'),
+      makeThought(5, 2, 'side branch')
+    ];
+
+    beforeEach(() => {
+      uiController.initialize();
+      jest.spyOn(visualizationManager, 'getThoughts').mockReturnValue(thoughts);
+    });
+
+    it('renders the full chain root → selected with the direct parent marked P', () => {
+      uiController.showNodeDetails(thoughts[3]); // #4: chain is 1 → 2 → 4
+
+      const details = document.getElementById('nodeDetails')!;
+      const chainItems = details
+        .querySelectorAll('.chain-list')[0]
+        .querySelectorAll('.chain-item');
+
+      expect(chainItems.length).toBe(3);
+      expect(chainItems[0].textContent).toContain('#1 root thought');
+      expect(chainItems[1].textContent).toContain('#2 first expansion');
+      expect(chainItems[1].querySelector('.chain-chip')!.textContent).toBe('P');
+      expect(chainItems[2].classList.contains('current')).toBe(true);
+      expect(chainItems[2].textContent).toContain('#4 deep dive');
+    });
+
+    it('lists direct children with C chips', () => {
+      uiController.showNodeDetails(thoughts[1]); // #2: children are 4 and 5
+
+      const details = document.getElementById('nodeDetails')!;
+      const lists = details.querySelectorAll('.chain-list');
+      expect(lists.length).toBe(2);
+
+      const childItems = lists[1].querySelectorAll('.chain-item');
+      expect(childItems.length).toBe(2);
+      childItems.forEach(item => {
+        expect(item.querySelector('.chain-chip')!.textContent).toBe('C');
+      });
+      expect(lists[1].textContent).toContain('#4 deep dive');
+      expect(lists[1].textContent).toContain('#5 side branch');
+    });
+
+    it('clicking a chain step selects that node in the 3D view', () => {
+      const spy = jest
+        .spyOn(visualizationManager, 'selectNodeById')
+        .mockImplementation(() => undefined);
+      uiController.showNodeDetails(thoughts[3]); // #4
+
+      const details = document.getElementById('nodeDetails')!;
+      const rootItem = details.querySelectorAll('.chain-item')[0] as HTMLElement;
+      rootItem.click();
+
+      expect(spy).toHaveBeenCalledWith(1);
+    });
+
+    it('renders a single-step chain and no P chip for the root node', () => {
+      uiController.showNodeDetails(thoughts[0]);
+
+      const details = document.getElementById('nodeDetails')!;
+      const chainItems = details
+        .querySelectorAll('.chain-list')[0]
+        .querySelectorAll('.chain-item');
+
+      expect(chainItems.length).toBe(1);
+      expect(chainItems[0].classList.contains('current')).toBe(true);
+      expect(details.querySelector('.chip-p')).toBeNull();
     });
   });
 });

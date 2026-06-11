@@ -114,7 +114,7 @@ if [[ $DRY_RUN -eq 1 ]]; then
 fi
 
 # ---------- 2. Fetch workflow states for the team ----------
-states="$(gql 'query($teamId: String!) { workflowStates(filter: { team: { id: { eq: $teamId } } }) { nodes { id name type } } }' \
+states="$(gql 'query($teamId: ID!) { workflowStates(filter: { team: { id: { eq: $teamId } } }) { nodes { id name type } } }' \
   "$(jq -nc --arg id "$team_id" '{teamId:$id}')")"
 
 # state_id_for "Done" / "In Progress" / "Backlog"
@@ -152,7 +152,7 @@ echo
 
 # ---------- 4. Create / reuse labels ----------
 echo "Creating labels..."
-existing_labels="$(gql 'query($teamId: String!) { issueLabels(filter: { team: { id: { eq: $teamId } } }) { nodes { id name } } }' \
+existing_labels="$(gql 'query($teamId: ID!) { issueLabels(filter: { team: { id: { eq: $teamId } } }) { nodes { id name } } }' \
   "$(jq -nc --arg id "$team_id" '{teamId:$id}')")"
 
 declare -A LABEL_IDS=()

@@ -52,6 +52,12 @@ export class VisualizationManager implements IVisualizationManager {
   private pointerDownPos: { x: number; y: number } | null = null;
   private interactionAbort: AbortController | null = null;
 
+  // Relation highlighting for the selected node: P/C badges, emissive tints,
+  // and recolored chain lines. Cleared on every selection change.
+  private relationSprites: THREE.Sprite[] = [];
+  private relationTinted: THREE.Mesh[] = [];
+  private chainLines: THREE.Line[] = [];
+
   private animationId: number | null = null;
   private isInitialized = false;
   
@@ -292,6 +298,173 @@ export class VisualizationManager implements IVisualizationManager {
       const material = node.material as THREE.MeshPhongMaterial;
       material.emissive?.setHex(0x335577);
     }
+    this.highlightRelations(node);
+  }
+
+  /**
+   * Select a node programmatically by thought id (null deselects).
+   * Drives the same path as a canvas click, including the selection handler.
+   */
+  selectNodeById(id: number | null): void {
+    const mesh = id == null
+      ? null
+      : this.nodes.find(n => n.userData.id === id) ?? null;
+    this.setSelectedNode(mesh);
+    this.nodeSelectionHandler?.(mesh ? (mesh.userData as ThoughtNode) : null);
+  }
+
+  /**
+   * Thoughts currently rendered in the scene
+   */
+  getThoughts(): ThoughtNode[] {
+    return [...this.currentThoughts];
+  }
+
+  /**
+   * Badge and tint the selected node's relations: direct parent gets a "P"
+   * badge, direct children get "C" badges, the full ancestor chain back to
+   * the root gets highlighted connection lines (the chain of thought).
+   */
+  private highlightRelations(selected: THREE.Mesh | null): void {
+    this.clearRelationHighlights();
+    if (!selected) return;
+
+    const thought = selected.userData as ThoughtNode;
+    const meshById = new Map<number, THREE.Mesh>();
+    this.nodes.forEach(n => meshById.set(n.userData.id, n));
+    const byId = new Map<number, ThoughtNode>();
+    this.currentThoughts.forEach(t => byId.set(t.id, t));
+
+    const lineByPair = new Map<string, THREE.Line>();
+    this.connectionData.forEach(c => {
+      lineByPair.set(`${c.fromNodeId}->${c.toNodeId}`, c.line);
+      lineByPair.set(`${c.toNodeId}->${c.fromNodeId}`, c.line);
+    });
+
+    const tintLine = (a: number, b: number, color: number, opacity: number): void => {
+      const line = lineByPair.get(`${a}->${b}`);
+      if (!line) return;
+      const mat = line.material as THREE.LineBasicMaterial;
+      mat.color.setHex(color);
+      mat.opacity = opacity;
+      this.chainLines.push(line);
+    };
+
+    // Ancestor chain (root → … → selected): direct parent badged "P",
+    // older ancestors tinted softly, chain lines recolored amber
+    let child: ThoughtNode | undefined = thought;
+    const seen = new Set<number>([thought.id]);
+    while (child && child.parent != null) {
+      const parent = byId.get(child.parent);
+      if (!parent || seen.has(parent.id)) break;
+      seen.add(parent.id);
+
+      const mesh = meshById.get(parent.id);
+      if (mesh) {
+        const mat = mesh.material as THREE.MeshPhongMaterial;
+        if (child.id === thought.id) {
+          this.attachBadge(mesh, 'P', '#f5a742');
+          mat.emissive?.setHex(0x5a3c08);
+        } else {
+          mat.emissive?.setHex(0x2a1e06);
+        }
+        this.relationTinted.push(mesh);
+      }
+      tintLine(child.id, parent.id, 0xf5a742, 0.95);
+      child = parent;
+    }
+
+    // Direct children badged "C", links recolored teal
+    this.currentThoughts.forEach(t => {
+      if (t.parent !== thought.id) return;
+      const mesh = meshById.get(t.id);
+      if (mesh) {
+        this.attachBadge(mesh, 'C', '#64ffda');
+        (mesh.material as THREE.MeshPhongMaterial).emissive?.setHex(0x0a4a3c);
+        this.relationTinted.push(mesh);
+      }
+      tintLine(thought.id, t.id, 0x64ffda, 0.9);
+    });
+  }
+
+  /**
+   * Remove all relation badges, emissive tints and chain-line colors
+   */
+  private clearRelationHighlights(): void {
+    this.relationSprites.forEach(sprite => {
+      sprite.parent?.remove(sprite);
+      sprite.material.map?.dispose();
+      sprite.material.dispose();
+    });
+    this.relationSprites = [];
+
+    this.relationTinted.forEach(mesh => {
+      if (mesh !== this.selectedNode) {
+        (mesh.material as THREE.MeshPhongMaterial).emissive?.setHex(0x000000);
+      }
+    });
+    this.relationTinted = [];
+
+    this.chainLines.forEach(line => {
+      const mat = line.material as THREE.LineBasicMaterial;
+      mat.color.setHex(0x2a4470);
+      mat.opacity = CONFIG.VISUALIZATION.connectionOpacity;
+    });
+    this.chainLines = [];
+  }
+
+  /**
+   * Attach a letter badge sprite to a node. The sprite is a child of the
+   * mesh so it follows position animation; scale is compensated so badges
+   * render at a constant world size regardless of node weight.
+   */
+  private attachBadge(mesh: THREE.Mesh, letter: string, background: string): void {
+    const sprite = this.makeLabelSprite(letter, background);
+    const base = (mesh.userData.baseScale as number | undefined) ?? 1;
+    sprite.scale.setScalar(1.5 / base);
+    sprite.position.set(0, 1.7, 0);
+    mesh.add(sprite);
+    this.relationSprites.push(sprite);
+  }
+
+  /**
+   * Build a circular letter sprite from a 2D canvas texture
+   */
+  private makeLabelSprite(letter: string, background: string): THREE.Sprite {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    let material: THREE.SpriteMaterial;
+    if (ctx) {
+      ctx.beginPath();
+      ctx.arc(32, 32, 28, 0, Math.PI * 2);
+      ctx.fillStyle = background;
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#0a192f';
+      ctx.stroke();
+      ctx.fillStyle = '#0a192f';
+      ctx.font = 'bold 34px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(letter, 32, 34);
+      material = new THREE.SpriteMaterial({
+        map: new THREE.CanvasTexture(canvas),
+        transparent: true,
+        depthTest: false
+      });
+    } else {
+      // No 2D context (e.g. jsdom): plain colored badge, still visible
+      material = new THREE.SpriteMaterial({
+        color: new THREE.Color(background),
+        transparent: true,
+        depthTest: false
+      });
+    }
+    const sprite = new THREE.Sprite(material);
+    sprite.renderOrder = 999;
+    return sprite;
   }
 
   private clearHover(): void {
@@ -630,6 +803,9 @@ export class VisualizationManager implements IVisualizationManager {
       cancelAnimationFrame(frameId);
     });
     this.activeAnimations.clear();
+
+    // Drop relation badges/tints before their parent meshes are removed
+    this.clearRelationHighlights();
 
     // Remove nodes
     this.nodes.forEach(node => {

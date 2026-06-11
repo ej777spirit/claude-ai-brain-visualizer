@@ -71,6 +71,16 @@ async function initializeApp(): Promise<void> {
     // Start application
     uiController.initialize();
 
+    // Debug/verification handle (same convention as the Gateway
+    // visualizer's window.__brain): lets tooling select nodes and
+    // inspect state without going through the pointer pipeline
+    (window as unknown as Record<string, unknown>).__app = {
+      stateManager,
+      apiClient,
+      visualizationManager,
+      uiController
+    };
+
     console.log('✅ AI Brain Visualizer Pro - Ready');
   } catch (error) {
     console.error('Failed to initialize application:', error);

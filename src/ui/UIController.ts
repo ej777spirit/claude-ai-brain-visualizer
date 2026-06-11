@@ -3,7 +3,7 @@
  * @module ui/UIController
  */
 
-import { IUIController, AppState, AIModel, ThoughtNode, VisualizationPattern } from '../types';
+import { IUIController, AppState, AIModel, ThoughtNode, VisualizationPattern, CONFIG } from '../types';
 import { StateManager } from '../services/state/StateManager';
 import { APIClient } from '../services/api/APIClient';
 import { VisualizationManager } from '../visualization/VisualizationManager';
@@ -381,7 +381,11 @@ export class UIController implements IUIController {
     const content = elements.responseContent;
 
     const isSimulated = response.metadata?.isSimulated;
-    const modelDisplay = isSimulated ? `${response.model} (Demo Mode)` : response.model;
+    // Some fallback paths already brand the model name (e.g. "CLAUDE (DEMO)")
+    const alreadyLabeled = /demo/i.test(String(response.model ?? ''));
+    const modelDisplay = isSimulated && !alreadyLabeled
+      ? `${response.model} (Demo Mode)`
+      : response.model;
 
     let headerText = `${modelDisplay} Analysis`;
     if (typeof response.confidence === 'number') {
@@ -504,7 +508,9 @@ export class UIController implements IUIController {
   }
 
   /**
-   * Display details for a node selected in the 3D view
+   * Display details for a node selected in the 3D view: the thought itself,
+   * its full chain of thought (root → … → selected) and its direct children.
+   * Chain steps and children are clickable to walk the graph.
    */
   showNodeDetails(thought: ThoughtNode | null): void {
     const container = this.elements?.nodeDetails;
@@ -514,6 +520,22 @@ export class UIController implements IUIController {
       container.textContent = 'Click a node in the 3D view to inspect it.';
       return;
     }
+
+    const all = this.visualizationManager.getThoughts();
+    const byId = new Map(all.map((t): [number, ThoughtNode] => [t.id, t]));
+
+    // Walk parent links to the root (cycle-guarded)
+    const chain: ThoughtNode[] = [thought];
+    const seen = new Set<number>([thought.id]);
+    let cursor: ThoughtNode = thought;
+    while (cursor.parent != null) {
+      const parent = byId.get(cursor.parent);
+      if (!parent || seen.has(parent.id)) break;
+      seen.add(parent.id);
+      chain.unshift(parent);
+      cursor = parent;
+    }
+    const children = all.filter(t => t.parent === thought.id);
 
     const text = document.createElement('div');
     text.className = 'detail-text';
@@ -525,8 +547,109 @@ export class UIController implements IUIController {
       ` · Confidence: ${thought.metadata?.confidence ?? '—'}` +
       (thought.parent != null ? ` · Parent: #${thought.parent}` : ' · Root node');
 
-    container.replaceChildren(text, meta);
-    this.announceToScreenReader(`Selected thought: ${thought.text}`);
+    container.replaceChildren(
+      text,
+      meta,
+      this.buildChainSection(chain, thought, children)
+    );
+    this.announceToScreenReader(
+      `Selected thought ${thought.id}: ${thought.text}. ` +
+      `Chain of ${chain.length} step${chain.length === 1 ? '' : 's'}, ` +
+      `${children.length} child thought${children.length === 1 ? '' : 's'}.`
+    );
+  }
+
+  /**
+   * Render the chain-of-thought list plus direct children. The step just
+   * above the selection carries a "P" (parent) chip and children carry "C"
+   * chips, mirroring the badges shown in the 3D view.
+   */
+  private buildChainSection(
+    chain: ThoughtNode[],
+    selected: ThoughtNode,
+    children: ThoughtNode[]
+  ): HTMLElement {
+    const section = document.createElement('div');
+    section.className = 'chain-section';
+
+    const title = document.createElement('div');
+    title.className = 'chain-title';
+    title.textContent = `🧬 Chain of thought (${chain.length} step${chain.length === 1 ? '' : 's'})`;
+    section.appendChild(title);
+
+    const list = document.createElement('ol');
+    list.className = 'chain-list';
+    chain.forEach((step, i) => {
+      const isSelected = step.id === selected.id;
+      const isDirectParent = i === chain.length - 2;
+      const chip = isSelected ? '●' : isDirectParent ? 'P' : String(i + 1);
+      const chipClass = isSelected ? 'chip-current' : isDirectParent ? 'chip-p' : 'chip-step';
+      list.appendChild(this.buildChainItem(step, chip, chipClass, isSelected));
+    });
+    section.appendChild(list);
+
+    if (children.length > 0) {
+      const childTitle = document.createElement('div');
+      childTitle.className = 'chain-title chain-children-title';
+      childTitle.textContent = `Child thoughts (${children.length})`;
+      section.appendChild(childTitle);
+
+      const childList = document.createElement('ol');
+      childList.className = 'chain-list';
+      children.forEach(child => {
+        childList.appendChild(this.buildChainItem(child, 'C', 'chip-c', false));
+      });
+      section.appendChild(childList);
+    }
+
+    return section;
+  }
+
+  /**
+   * One clickable row of the chain/children lists
+   */
+  private buildChainItem(
+    step: ThoughtNode,
+    chip: string,
+    chipClass: string,
+    isSelected: boolean
+  ): HTMLLIElement {
+    const item = document.createElement('li');
+    item.className = 'chain-item' + (isSelected ? ' current' : '');
+
+    const chipEl = document.createElement('span');
+    chipEl.className = `chain-chip ${chipClass}`;
+    chipEl.textContent = chip;
+
+    const dot = document.createElement('span');
+    dot.className = 'chain-cat-dot';
+    const categoryColor = CONFIG.THOUGHT_CATEGORIES[step.category]?.color ?? 0xffffff;
+    dot.style.backgroundColor = `#${categoryColor.toString(16).padStart(6, '0')}`;
+
+    const textEl = document.createElement('span');
+    textEl.className = 'chain-item-text';
+    textEl.textContent = `#${step.id} ${step.text}`;
+    textEl.title = step.text;
+
+    item.append(chipEl, dot, textEl);
+
+    if (!isSelected) {
+      item.setAttribute('role', 'button');
+      item.tabIndex = 0;
+      item.setAttribute('aria-label', `Select thought ${step.id}: ${step.text}`);
+      const select = (): void => this.visualizationManager.selectNodeById(step.id);
+      item.addEventListener('click', select);
+      item.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          select();
+        }
+      });
+    } else {
+      item.setAttribute('aria-current', 'true');
+    }
+
+    return item;
   }
 
   /**
@@ -596,7 +719,8 @@ export class UIController implements IUIController {
           this.performanceMonitor.frameCount * 1000 / (currentTime - this.performanceMonitor.lastTime)
         );
         elements.fps.textContent = this.performanceMonitor.fps.toString();
-        elements.memUsage.textContent = this.visualizationManager.getMemoryUsage().toFixed(1) + 'MB';
+        // Unit suffix lives in the HTML template ("…</span>MB")
+        elements.memUsage.textContent = this.visualizationManager.getMemoryUsage().toFixed(1);
 
         this.performanceMonitor.frameCount = 0;
         this.performanceMonitor.lastTime = currentTime;

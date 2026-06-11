@@ -121,7 +121,7 @@ async function main() {
 
   // 2. Fetch workflow states for this team
   const { workflowStates } = await gql(
-    `query($teamId: String!) {
+    `query($teamId: ID!) {
        workflowStates(filter: { team: { id: { eq: $teamId } } }) {
          nodes { id name type }
        }
@@ -140,46 +140,67 @@ async function main() {
 
   // 3. Create project
   console.log('Creating project...');
-  const { projectCreate } = await gql(
-    `mutation($input: ProjectCreateInput!) {
-       projectCreate(input: $input) { success project { id name url } }
+  let project;
+  const { projects: existingProjects } = await gql(
+    `query($name: String!) {
+       projects(filter: { name: { eq: $name } }, first: 10) { nodes { id name url } }
      }`,
-    {
-      input: {
-        name: PROJECT_NAME,
-        description: PROJECT_DESCRIPTION,
-        teamIds: [team.id],
-        leadId: viewer.id,
-      },
-    }
+    { name: PROJECT_NAME }
   );
-  const project = projectCreate.project;
+  if (existingProjects.nodes.length > 0) {
+    project = existingProjects.nodes[0];
+    console.log('  • reusing existing project (skipping create)');
+  } else {
+    const { projectCreate } = await gql(
+      `mutation($input: ProjectCreateInput!) {
+         projectCreate(input: $input) { success project { id name url } }
+       }`,
+      {
+        input: {
+          name: PROJECT_NAME,
+          description: PROJECT_DESCRIPTION,
+          teamIds: [team.id],
+          leadId: viewer.id,
+        },
+      }
+    );
+    project = projectCreate.project;
+  }
   console.log(`  ✓ ${project.name} → ${project.url}\n`);
 
   // 4. Create labels (team-scoped)
   console.log('Creating labels...');
   const labelIds = {};
   const { issueLabels } = await gql(
-    `query($teamId: String!) {
-       issueLabels(filter: { team: { id: { eq: $teamId } } }) { nodes { id name } }
-     }`,
-    { teamId: team.id }
+    `query { issueLabels(first: 250) { nodes { id name } } }`
   );
+  const labelByName = new Map(issueLabels.nodes.map((l) => [l.name.toLowerCase(), l]));
   for (const lbl of LABELS) {
-    const existing = issueLabels.nodes.find((l) => l.name === lbl.name);
+    const existing = labelByName.get(lbl.name.toLowerCase());
     if (existing) {
       labelIds[lbl.name] = existing.id;
-      console.log(`  • ${lbl.name} (exists)`);
+      console.log(`  • ${lbl.name} (exists as "${existing.name}")`);
       continue;
     }
-    const { issueLabelCreate } = await gql(
-      `mutation($input: IssueLabelCreateInput!) {
-         issueLabelCreate(input: $input) { success issueLabel { id name } }
-       }`,
-      { input: { name: lbl.name, color: lbl.color, teamId: team.id } }
-    );
-    labelIds[lbl.name] = issueLabelCreate.issueLabel.id;
-    console.log(`  ✓ ${lbl.name}`);
+    try {
+      const { issueLabelCreate } = await gql(
+        `mutation($input: IssueLabelCreateInput!) {
+           issueLabelCreate(input: $input) { success issueLabel { id name } }
+         }`,
+        { input: { name: lbl.name, color: lbl.color, teamId: team.id } }
+      );
+      labelIds[lbl.name] = issueLabelCreate.issueLabel.id;
+      labelByName.set(lbl.name.toLowerCase(), issueLabelCreate.issueLabel);
+      console.log(`  ✓ ${lbl.name}`);
+    } catch (e) {
+      const { issueLabels: refetch } = await gql(
+        `query { issueLabels(first: 250) { nodes { id name } } }`
+      );
+      const found = refetch.nodes.find((l) => l.name.toLowerCase() === lbl.name.toLowerCase());
+      if (!found) throw e;
+      labelIds[lbl.name] = found.id;
+      console.log(`  • ${lbl.name} (reused "${found.name}")`);
+    }
   }
   console.log('');
 
