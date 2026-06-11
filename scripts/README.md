@@ -1,6 +1,15 @@
-# Linear Import Script
+# Linear Import Scripts
 
 Automated import of the `AI Super Brain Visualizer` project documentation into Linear.
+
+Two equivalent implementations are provided — use whichever you prefer:
+
+| Script | Requires | Run |
+|--------|----------|-----|
+| `import-to-linear.mjs` | Node.js 18+ | `node scripts/import-to-linear.mjs` |
+| `import-to-linear.sh`  | bash, curl, jq | `./scripts/import-to-linear.sh` |
+
+Both produce the same result.
 
 ## What it creates
 
@@ -18,7 +27,7 @@ In one run, this script populates your Linear workspace with:
 - A Linear **personal API key**
   - Linear → Settings → Security & access → Personal API keys → New API key
 
-## Run
+## Run — Node version
 
 ```bash
 # Dry run — shows what would be created, no API writes
@@ -29,6 +38,24 @@ LINEAR_API_KEY=lin_api_xxxxxxxx node scripts/import-to-linear.mjs
 
 # Multi-team workspace — specify which team
 LINEAR_API_KEY=lin_api_xxxxxxxx node scripts/import-to-linear.mjs --team ENG
+```
+
+## Run — Bash version
+
+```bash
+# Install jq if missing:
+#   macOS:  brew install jq
+#   Debian: sudo apt-get install jq
+#   Fedora: sudo dnf install jq
+
+# Dry run
+LINEAR_API_KEY=lin_api_xxxxxxxx ./scripts/import-to-linear.sh --dry-run
+
+# Real run (single-team workspace)
+LINEAR_API_KEY=lin_api_xxxxxxxx ./scripts/import-to-linear.sh
+
+# Multi-team workspace
+LINEAR_API_KEY=lin_api_xxxxxxxx ./scripts/import-to-linear.sh --team ENG
 ```
 
 ## After import
